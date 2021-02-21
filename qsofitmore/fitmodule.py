@@ -16,6 +16,7 @@ from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from PyQSOFit import QSOFit
+from .extinction import *
 
 __all__ = ['QSOFitNew']
 
@@ -147,3 +148,38 @@ class QSOFitNew(QSOFit):
         err *= 1e17
         return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=objname, plateid=plateid, 
                    mjd=mjd, fiberid=fiberid, path=path)
+
+    def setmapname(self, mapname):
+        """
+        Parameters:
+            mapname : str
+                name of the dust map. Currently only support
+                'sfd' or 'planck'.
+        """
+        mapname = str(mapname).lower()
+        self.mapname = mapname
+
+    def _DeRedden(self, lam, flux, err, ra, dec, dustmap_path):
+        """Correct the Galactic extinction"""
+        if self.mapname == 'sfd':
+            m = sfdmap.SFDMap(dustmap_path)
+            zero_flux = np.where(flux == 0, True, False)
+            flux[zero_flux] = 1e-10
+            flux_unred = pyasl.unred(lam, flux, m.ebv(ra, dec))
+            err_unred = err*flux_unred/flux
+            flux_unred[zero_flux] = 0
+            del self.flux, self.err
+            self.flux = flux_unred
+            self.err = err_unred
+        elif self.mapname == 'planck':
+            self.ebv = getebv(self.ra, self.dec, mapname=self.mapname)
+            Alam = wang2019(self.lam, self.ebv)
+            zero_flux = np.where(flux == 0, True, False)
+            flux[zero_flux] = 1e-10
+            flux_unred = deredden(Alam, self.flux) 
+            err_unred = err*flux_unred/flux
+            flux_unred[zero_flux] = 0
+            del self.flux, self.err
+            self.flux = flux_unred
+            self.err = err_unred           
+        return self.flux
