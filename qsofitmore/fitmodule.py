@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+from mmap import MAP_ANONYMOUS
 import sys
 import glob
 import matplotlib
@@ -161,7 +162,12 @@ class QSOFitNew(QSOFit):
 
     def _DeRedden(self, lam, flux, err, ra, dec, dustmap_path):
         """Correct the Galactic extinction"""
-        if self.mapname == 'sfd':
+        try:
+            mapname = self.mapname
+        except Warning:
+            print('`mapname` for extinction not set.\nSetting `mapname` to `sfd`.')
+            mapname = 'sfd'
+        if mapname == 'sfd':
             m = sfdmap.SFDMap(dustmap_path)
             zero_flux = np.where(flux == 0, True, False)
             flux[zero_flux] = 1e-10
@@ -171,7 +177,7 @@ class QSOFitNew(QSOFit):
             del self.flux, self.err
             self.flux = flux_unred
             self.err = err_unred
-        elif self.mapname == 'planck':
+        elif mapname == 'planck':
             self.ebv = getebv(self.ra, self.dec, mapname=self.mapname)
             Alam = wang2019(self.lam, self.ebv)
             zero_flux = np.where(flux == 0, True, False)
