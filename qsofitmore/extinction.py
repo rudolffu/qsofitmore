@@ -46,6 +46,40 @@ def wang2019(wave, ebv, waveunit=u.AA, Rv=3.1):
     Alam = Alam_over_Av * Av
     return Alam
 
+
+def getebv(ra, dec, mapname='planck', mode=None):
+    """
+    Query the dust map with "dustmaps" to get the line-of-sight
+    E(B-V) value for a given object.
+    Parameters:
+    ----------
+        mapname : str
+            One of ['sfd', 'planck']. Other maps are 
+            avaliable in "dustmaps" but not implemented here: 
+            ['bayestar', 'iphas', 'marshall', chen2014',  
+            'lenz2017', 'pg2010', 'leike_ensslin_2019', 'leike2020']
+            Default: 'planck'.
+        mode : str
+            One of ['local', 'web']. Applicable only when
+            mapname == 'sfd'. When 'local', query the local map 
+            on disk. When 'web', query the web server.  
+            Default: 'local'.
+        """
+    coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
+    if mapname.lower()=='planck':
+        from dustmaps.planck import PlanckQuery
+        planck = PlanckQuery()
+        ebv = planck(coord)
+    elif mapname.lower()=='sfd' and mode=='local':
+        from dustmaps.sfd import SFDQuery
+        sfd = SFDQuery()
+        ebv = sfd(coord)
+    elif mapname.lower=='sfd' and mode=='web':
+        from dustmaps.sfd import SFDWebQuery
+        sfd = SFDWebQuery()
+        ebv = sfd(coord)
+    return ebv
+
         
 def redden(Alam, flux):
     """
