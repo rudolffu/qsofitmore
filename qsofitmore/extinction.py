@@ -1,3 +1,4 @@
+#!/usr/bin/env python
 from astropy.io import fits
 import numpy as np
 import re
