@@ -18,6 +18,9 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from PyQSOFit import QSOFit
 from .extinction import *
+import pkg_resources
+
+datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 
 __all__ = ['QSOFitNew']
 
@@ -190,3 +193,17 @@ class QSOFitNew(QSOFit):
             self.flux = flux_unred
             self.err = err_unred           
         return self.flux
+
+
+    def _HostDecompose(self, wave, flux, err, z, Mi, npca_gal, npca_qso, path):
+        path = datapath
+        return super()._HostDecompose(wave, flux, err, z, Mi, npca_gal, npca_qso, path)
+
+    
+    def _DoContiFit(self, wave, flux, err, ra, dec, plateid, mjd, fiberid):
+        tmp_selfpath = self.path
+        self.path = datapath
+        try:
+            return super()._DoContiFit(wave, flux, err, ra, dec, plateid, mjd, fiberid)
+        finally:
+            self.path = tmp_selfpath
