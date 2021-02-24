@@ -163,10 +163,11 @@ class QSOFitNew(QSOFit):
     def _DeRedden(self, lam, flux, err, ra, dec, dustmap_path):
         """Correct the Galactic extinction"""
         try:
-            mapname = self.mapname
-        except Warning:
+            print("The dust map is {}".format(self.mapname))
+        except AttributeError:
             print('`mapname` for extinction not set.\nSetting `mapname` to `sfd`.')
             mapname = 'sfd'
+            self.mapname = mapname
         if mapname == 'sfd':
             m = sfdmap.SFDMap(dustmap_path)
             zero_flux = np.where(flux == 0, True, False)
