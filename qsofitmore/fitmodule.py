@@ -241,3 +241,133 @@ class QSOFitNew(QSOFit):
                            save_fig=save_fig, plot_line_name=plot_line_name, plot_legend=plot_legend, 
                            dustmap_path=dustmap_path, save_fig_path=save_fig_path, save_fits_path=save_fits_path, 
                            save_fits_name=save_fits_name)
+
+
+    def _PlotFig(self, ra, dec, z, wave, flux, err, decomposition_host, linefit, tmp_all, gauss_result, f_conti_model,
+                 conti_fit, all_comp_range, uniq_linecomp_sort, line_flux, save_fig_path):
+        """Plot the results"""
+        
+        self.PL_poly = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave,
+                                                                                                conti_fit.params[11:])
+        
+        matplotlib.rc('xtick', labelsize=20)
+        matplotlib.rc('ytick', labelsize=20)
+        
+        if linefit == True:
+            fig, axn = plt.subplots(nrows=2, ncols=np.max([self.ncomp, 1]), figsize=(15, 8),
+                                    squeeze=False)  # prepare for the emission line subplots in the second row
+            ax = plt.subplot(2, 1, 1)  # plot the first subplot occupying the whole first row
+            if self.MC == True:
+                mc_flag = 2
+            else:
+                mc_flag = 1
+            
+            lines_total = np.zeros_like(wave)
+            line_order = {'r': 3, 'g': 7}  # to make the narrow line plot above the broad line
+            
+            temp_gauss_result = gauss_result
+            for p in range(int(len(temp_gauss_result)/mc_flag/3)):
+                # warn that the width used to separate narrow from broad is not exact 1200 km s-1 which would lead to wrong judgement
+                if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                    color = 'g'
+                else:
+                    color = 'r'
+                
+                line_single = self.Onegauss(np.log(wave), temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag])
+                
+                ax.plot(wave, line_single+f_conti_model, color=color, zorder=5)
+                for c in range(self.ncomp):
+                    axn[1][c].plot(wave, line_single, color=color, zorder=line_order[color])
+                lines_total += line_single
+            
+            ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
+                    zorder=6)  # supplement the emission lines in the firs subplot
+            for c in range(self.ncomp):
+                axn[1][c].plot(wave, lines_total, color='b', zorder=10)
+                axn[1][c].plot(wave, self.line_flux, 'k', zorder=0)
+                
+                axn[1][c].set_xlim(all_comp_range[2*c:2*c+2])
+                f_max = line_flux[
+                    np.where((wave > all_comp_range[2*c]) & (wave < all_comp_range[2*c+1]), True, False)].max()
+                f_min = line_flux[
+                    np.where((wave > all_comp_range[2*c]) & (wave < all_comp_range[2*c+1]), True, False)].min()
+                axn[1][c].set_ylim(f_min*0.9, f_max*1.1)
+                axn[1][c].set_xticks([all_comp_range[2*c], np.round((all_comp_range[2*c]+all_comp_range[2*c+1])/2, -1),
+                                      all_comp_range[2*c+1]])
+                axn[1][c].text(0.02, 0.9, uniq_linecomp_sort[c], fontsize=20, transform=axn[1][c].transAxes)
+                axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(self.comp_result[c*6+3]), 2)),
+                               fontsize=16, transform=axn[1][c].transAxes)
+        else:
+            fig, ax = plt.subplots(nrows=1, ncols=1,
+                                   figsize=(15, 8))  # if no lines are fitted, there would be only one row
+        
+        if self.ra == -999. or self.dec == -999.:
+            ax.set_title(str(self.sdss_name)+'   z = '+str(np.round(z, 4)), fontsize=20)
+        else:
+            ax.set_title('ra,dec = ('+str(ra)+','+str(dec)+')   '+str(self.sdss_name)+'   z = '+str(np.round(z, 4)),
+                         fontsize=20)
+        
+        ax.plot(self.wave_prereduced, self.flux_prereduced, 'k', label='data', zorder=2)
+        
+        if decomposition_host == True and self.decomposed == True:
+            ax.plot(wave, self.qso+self.host, 'pink', label='host+qso temp', zorder=3)
+            ax.plot(wave, flux, 'grey', label='data-host', zorder=1)
+            ax.plot(wave, self.host, 'purple', label='host', zorder=4)
+        else:
+            host = self.flux_prereduced.min()
+        
+        ax.scatter(wave[tmp_all], np.repeat(self.flux_prereduced.max()*1.05, len(wave[tmp_all])), color='grey',
+                   marker='o')  # plot continuum region
+        
+        ax.plot([0, 0], [0, 0], 'r', label='line br', zorder=5)
+        ax.plot([0, 0], [0, 0], 'g', label='line na', zorder=5)
+        ax.plot(wave, f_conti_model, 'c', lw=2, label='FeII', zorder=7)
+        if self.BC == True:
+            ax.plot(wave, self.f_pl_model+self.f_poly_model+self.f_bc_model, 'y', lw=2, label='BC', zorder=8)
+        ax.plot(wave,
+                conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave, conti_fit.params[11:]),
+                color='orange', lw=2, label='conti', zorder=9)
+        if self.decomposed == False:
+            plot_bottom = flux.min()
+        else:
+            plot_bottom = min(self.host.min(), flux.min())
+        
+        ax.set_ylim(plot_bottom*0.9, self.flux_prereduced.max()*1.1)
+        
+        if self.plot_legend == True:
+            ax.legend(loc='best', frameon=False, ncol=2, fontsize=10)
+        
+        # plot line name--------
+        if self.plot_line_name == True:
+            line_cen = np.array(
+                [6564.60, 6549.85, 6585.27, 6718.29, 6732.66, 4862.68, 5008.24, 4687.02, 4341.68, 3934.78, 3728.47,
+                 3426.84, 2798.75, 1908.72, 1816.97, 1750.26, 1718.55, 1549.06, 1640.42, 1402.06, 1396.76, 1335.30, \
+                 1215.67])
+            
+            line_name = np.array(
+                ['', '', r'H$\alpha$+[NII]', '', '[SII]6718,6732', r'H$\beta$', '[OIII]', 'HeII4687', r'H$\gamma$', 
+                 'CaII3934', '[OII]3728',
+                 'NeV3426', 'MgII', 'CIII]', 'SiII1816', 'NIII]1750', 'NIV]1718', 'CIV', 'HeII1640', '', 'SiIV+OIV',
+                 'CII1335', r'Ly$\alpha$'])
+            
+            for ll in range(len(line_cen)):
+                if wave.min() < line_cen[ll] < wave.max():
+                    ax.plot([line_cen[ll], line_cen[ll]], [plot_bottom*0.9, self.flux_prereduced.max()*1.1], 'k:')
+                    ax.text(line_cen[ll]+7, 1.08*self.flux_prereduced.max(), line_name[ll], rotation=90, fontsize=10,
+                            va='top')
+        
+        ax.set_xlim(wave.min(), wave.max())
+        
+        if linefit == True:
+            ax.text(0.5, -1.4, r'$\rm Rest \, Wavelength$ ($\rm \AA$)', fontsize=20, transform=ax.transAxes,
+                    ha='center')
+            ax.text(-0.1, -0.1, r'$\rm f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=20,
+                    transform=ax.transAxes, rotation=90, ha='center', rotation_mode='anchor')
+        else:
+            plt.xlabel(r'$\rm Rest \, Wavelength$ ($\rm \AA$)', fontsize=20)
+            plt.ylabel(r'$\rm f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=20)
+        
+        if self.save_fig == True:
+            plt.savefig(save_fig_path+self.sdss_name+'.pdf')
+        plt.show()
+        plt.close()
