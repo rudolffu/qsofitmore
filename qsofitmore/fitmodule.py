@@ -27,7 +27,7 @@ __all__ = ['QSOFitNew']
 class QSOFitNew(QSOFit):
 
     def __init__(self, lam, flux, err, z, ra=- 999., dec=-999., name=None, plateid=None, mjd=None, fiberid=None, 
-                 path=None, and_mask=None, or_mask=None):
+                 path=None, and_mask=None, or_mask=None, is_sdss=True):
         """
         Get the input data perpared for the QSO spectral fitting
         
@@ -73,6 +73,7 @@ class QSOFitNew(QSOFit):
         self.mjd = mjd
         self.fiberid = fiberid
         self.path = path    
+        self.is_sdss = is_sdss
 
     @classmethod
     def fromiraf(cls, fname, redshift=None, path=None, plateid=None, mjd=None, fiberid=None):
@@ -102,12 +103,12 @@ class QSOFitNew(QSOFit):
         hdu = fits.open(fname)
         header = hdu[0].header
         objname = header['object']
-        if plateid is None:
-            plateid = 0
-        if mjd is None:
-            mjd = 0
-        if fiberid is None:
-            fiberid = 0
+        # if plateid is None:
+        #     plateid = 0
+        # if mjd is None:
+        #     mjd = 0
+        # if fiberid is None:
+        #     fiberid = 0
         if redshift is None:
             try:
                 redshift = float(header['redshift'])
@@ -151,7 +152,7 @@ class QSOFitNew(QSOFit):
         flux *= 1e17
         err *= 1e17
         return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=objname, plateid=plateid, 
-                   mjd=mjd, fiberid=fiberid, path=path)
+                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=False)
 
     def setmapname(self, mapname):
         """
@@ -171,7 +172,7 @@ class QSOFitNew(QSOFit):
             print('`mapname` for extinction not set.\nSetting `mapname` to `sfd`.')
             mapname = 'sfd'
             self.mapname = mapname
-        if mapname == 'sfd':
+        if self.mapname == 'sfd':
             m = sfdmap.SFDMap(dustmap_path)
             zero_flux = np.where(flux == 0, True, False)
             flux[zero_flux] = 1e-10
@@ -181,7 +182,7 @@ class QSOFitNew(QSOFit):
             del self.flux, self.err
             self.flux = flux_unred
             self.err = err_unred
-        elif mapname == 'planck':
+        elif self.mapname == 'planck':
             self.ebv = getebv(self.ra, self.dec, mapname=self.mapname)
             Alam = wang2019(self.lam, self.ebv)
             zero_flux = np.where(flux == 0, True, False)
@@ -201,9 +202,42 @@ class QSOFitNew(QSOFit):
 
     
     def _DoContiFit(self, wave, flux, err, ra, dec, plateid, mjd, fiberid):
+        if self.plateid is None:
+            plateid = 0
+        if self.plateid is None:
+            mjd = 0
+        if self.plateid is None:
+            fiberid = 0
         tmp_selfpath = self.path
         self.path = datapath
         try:
             return super()._DoContiFit(wave, flux, err, ra, dec, plateid, mjd, fiberid)
         finally:
             self.path = tmp_selfpath
+
+    def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
+            wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, Fe_uv_op=True,
+            Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
+            linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
+            plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, save_fig_path=None,
+            save_fits_path=None, save_fits_name=None):
+        if name is None and save_fits_name is not None:
+            name = save_fits_name
+            print("Name is now {}.".format(name))
+        elif name is None and save_fits_name is None:
+            name = self.name
+            print("Name is now {}.".format(name))
+        else:
+            pass
+        if self.is_sdss == False and name is None:
+            print("Bad figure name!")
+        return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
+                           deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
+                           decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
+                           npca_qso=npca_qso, Fe_uv_op=Fe_uv_op, Fe_flux_range=Fe_flux_range, poly=poly, 
+                           BC=BC, rej_abs=rej_abs, initial_guess=initial_guess, MC=MC, n_trails=n_trails, 
+                           linefit=linefit, tie_lambda=tie_lambda, tie_width=tie_width, tie_flux_1=tie_flux_1, 
+                           tie_flux_2=tie_flux_2, save_result=save_result, plot_fig=plot_fig, 
+                           save_fig=save_fig, plot_line_name=plot_line_name, plot_legend=plot_legend, 
+                           dustmap_path=dustmap_path, save_fig_path=save_fig_path, save_fits_path=save_fits_path, 
+                           save_fits_name=save_fits_name)
