@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 from mmap import MAP_ANONYMOUS
+from os import name
+from re import T
 import sys
 import glob
 import matplotlib
@@ -285,6 +287,7 @@ class QSOFitNew(QSOFit):
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
                     zorder=6)  # supplement the emission lines in the firs subplot
             for c in range(self.ncomp):
+                tname = texlinename(uniq_linecomp_sort[c])
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
                 axn[1][c].plot(wave, self.line_flux, 'k', zorder=0)
                 
@@ -296,7 +299,7 @@ class QSOFitNew(QSOFit):
                 axn[1][c].set_ylim(f_min*0.9, f_max*1.1)
                 axn[1][c].set_xticks([all_comp_range[2*c], np.round((all_comp_range[2*c]+all_comp_range[2*c+1])/2, -1),
                                       all_comp_range[2*c+1]])
-                axn[1][c].text(0.02, 0.9, uniq_linecomp_sort[c], fontsize=20, transform=axn[1][c].transAxes)
+                axn[1][c].text(0.02, 0.9, tname, fontsize=20, transform=axn[1][c].transAxes)
                 axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(self.comp_result[c*6+3]), 2)),
                                fontsize=16, transform=axn[1][c].transAxes)
         else:
@@ -373,3 +376,205 @@ class QSOFitNew(QSOFit):
             plt.savefig(save_fig_path+self.sdss_name+'.pdf')
         plt.show()
         plt.close()
+    
+
+    # line function-----------
+    def _DoLineFit(self, wave, line_flux, err, f):
+        """Fit the emission lines with Gaussian profile """
+        
+        # remove abosorbtion line in emission line region
+        # remove the pixels below continuum 
+        ind_neg_line = ~np.where(((((wave > 2700.) & (wave < 2900.)) | ((wave > 1700.) & (wave < 1970.)) | (
+                (wave > 1500.) & (wave < 1700.)) | ((wave > 1290.) & (wave < 1450.)) | (
+                                           (wave > 1150.) & (wave < 1290.))) & (line_flux < -err)), True, False)
+        
+        # read line parameter
+        linepara = fits.open(self.path+'qsopar.fits')
+        linelist = linepara[1].data
+        self.linelist = linelist
+        
+        ind_kind_line = np.where((linelist['lambda'] > wave.min()) & (linelist['lambda'] < wave.max()), True, False)
+        if ind_kind_line.any() == True:
+            # sort complex name with line wavelength
+            uniq_linecomp, uniq_ind = np.unique(linelist['compname'][ind_kind_line], return_index=True)
+            uniq_linecomp_sort = uniq_linecomp[linelist['lambda'][ind_kind_line][uniq_ind].argsort()]
+            ncomp = len(uniq_linecomp_sort)
+            compname = linelist['compname']
+            allcompcenter = np.sort(linelist['lambda'][ind_kind_line][uniq_ind])
+            
+            # loop over each complex and fit n lines simutaneously
+            
+            comp_result = np.array([])
+            comp_result_type = np.array([])
+            comp_result_name = np.array([])
+            gauss_result = np.array([])
+            gauss_result_type = np.array([])
+            gauss_result_name = np.array([])
+            all_comp_range = np.array([])
+            fur_result = np.array([])
+            fur_result_type = np.array([])
+            fur_result_name = np.array([])
+            
+            for ii in range(ncomp):
+                compcenter = allcompcenter[ii]
+                ind_line = np.where(linelist['compname'] == uniq_linecomp_sort[ii], True, False)  # get line index
+                nline_fit = np.sum(ind_line)  # n line in one complex
+                linelist_fit = linelist[ind_line]
+                # n gauss in each line
+                ngauss_fit = np.asarray(linelist_fit['ngauss'], dtype=int)
+                
+                # for iitmp in range(nline_fit):   # line fit together
+                comp_range = [linelist_fit[0]['minwav'], linelist_fit[0]['maxwav']]  # read complex range from table
+                all_comp_range = np.concatenate([all_comp_range, comp_range])
+                
+                # ----tie lines--------
+                self._do_tie_line(linelist, ind_line)
+                
+                # get the pixel index in complex region and remove negtive abs in line region
+                ind_n = np.where((wave > comp_range[0]) & (wave < comp_range[1]) & (ind_neg_line == True), True, False)
+                
+                if np.sum(ind_n) > 10:
+                    # call kmpfit for lines
+                    
+                    line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
+                    
+                    # calculate MC err
+                    if self.MC == True and self.n_trails > 0:
+                        all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std = self._line_mc(
+                            np.log(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
+                            self.n_trails, compcenter)
+                    
+                    # ----------------------get line fitting results----------------------
+                    # complex parameters
+                    
+                    # tie lines would reduce the number of parameters increasing the dof
+                    dof_fix = 0
+                    if self.tie_lambda == True:
+                        dof_fix += np.max((len(self.ind_tie_vindex1), 1))-1
+                        dof_fix += np.max((len(self.ind_tie_vindex2), 1))-1
+                    if self.tie_width == True:
+                        dof_fix += np.max((len(self.ind_tie_windex1), 1))-1
+                        dof_fix += np.max((len(self.ind_tie_windex2), 1))-1
+                    if self.tie_flux_1 == True:
+                        dof_fix += np.max((len(self.ind_tie_findex1), 1))-1
+                        dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
+                    
+                    comp_result_tmp = np.array(
+                        [[linelist['compname'][ind_line][0]], [line_fit.status], [line_fit.chi2_min],
+                         [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
+                         [line_fit.dof+dof_fix]]).flatten()
+                    comp_result_type_tmp = np.array(['str', 'int', 'float', 'float', 'int', 'int'])
+                    comp_result_name_tmp = np.array(
+                        [str(ii+1)+'_complex_name', str(ii+1)+'_line_status', str(ii+1)+'_line_min_chi2',
+                         str(ii+1)+'_line_red_chi2', str(ii+1)+'_niter', str(ii+1)+'_ndof'])
+                    comp_result = np.concatenate([comp_result, comp_result_tmp])
+                    comp_result_name = np.concatenate([comp_result_name, comp_result_name_tmp])
+                    comp_result_type = np.concatenate([comp_result_type, comp_result_type_tmp])
+                    
+                    # gauss result -------------
+                    
+                    gauss_tmp = np.array([])
+                    gauss_type_tmp = np.array([])
+                    gauss_name_tmp = np.array([])
+                    
+                    for gg in range(len(line_fit.params)):
+                        gauss_tmp = np.concatenate([gauss_tmp, np.array([line_fit.params[gg]])])
+                        if self.MC == True and self.n_trails > 0:
+                            gauss_tmp = np.concatenate([gauss_tmp, np.array([all_para_std[gg]])])
+                    gauss_result = np.concatenate([gauss_result, gauss_tmp])
+                    
+                    # gauss result name -----------------
+                    for n in range(nline_fit):
+                        for nn in range(int(ngauss_fit[n])):
+                            line_name = linelist['linename'][ind_line][n]+'_'+str(nn+1)
+                            if self.MC == True and self.n_trails > 0:
+                                gauss_type_tmp_tmp = ['float', 'float', 'float', 'float', 'float', 'float']
+                                gauss_name_tmp_tmp = [line_name+'_scale', line_name+'_scale_err',
+                                                      line_name+'_centerwave', line_name+'_centerwave_err',
+                                                      line_name+'_sigma', line_name+'_sigma_err']
+                            else:
+                                gauss_type_tmp_tmp = ['float', 'float', 'float']
+                                gauss_name_tmp_tmp = [line_name+'_scale', line_name+'_centerwave', line_name+'_sigma']
+                            gauss_name_tmp = np.concatenate([gauss_name_tmp, gauss_name_tmp_tmp])
+                            gauss_type_tmp = np.concatenate([gauss_type_tmp, gauss_type_tmp_tmp])
+                    gauss_result_type = np.concatenate([gauss_result_type, gauss_type_tmp])
+                    gauss_result_name = np.concatenate([gauss_result_name, gauss_name_tmp])
+                    
+                    # further line parameters ----------
+                    fur_result_tmp = np.array([])
+                    fur_result_type_tmp = np.array([])
+                    fur_result_name_tmp = np.array([])
+                    fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
+                    br_name = uniq_linecomp_sort[ii]
+                    
+                    if self.MC == True and self.n_trails > 0:
+                        fur_result_tmp = np.array(
+                            [fwhm, fwhm_std, sigma, sigma_std, ew, ew_std, peak, peak_std, area, area_std])
+                        fur_result_type_tmp = np.concatenate([fur_result_type_tmp,
+                                                              ['float', 'float', 'float', 'float', 'float', 'float',
+                                                               'float', 'float', 'float', 'float']])
+                        fur_result_name_tmp = np.array(
+                            [br_name+'_whole_br_fwhm', br_name+'_whole_br_fwhm_err', br_name+'_whole_br_sigma',
+                             br_name+'_whole_br_sigma_err', br_name+'_whole_br_ew', br_name+'_whole_br_ew_err',
+                             br_name+'_whole_br_peak', br_name+'_whole_br_peak_err', br_name+'_whole_br_area',
+                             br_name+'_whole_br_area_err'])
+                    else:
+                        fur_result_tmp = np.array([fwhm, sigma, ew, peak, area])
+                        fur_result_type_tmp = np.concatenate(
+                            [fur_result_type_tmp, ['float', 'float', 'float', 'float', 'float']])
+                        fur_result_name_tmp = np.array(
+                            [br_name+'_whole_br_fwhm', br_name+'_whole_br_sigma', br_name+'_whole_br_ew',
+                             br_name+'_whole_br_peak', br_name+'_whole_br_area'])
+                    fur_result = np.concatenate([fur_result, fur_result_tmp])
+                    fur_result_type = np.concatenate([fur_result_type, fur_result_type_tmp])
+                    fur_result_name = np.concatenate([fur_result_name, fur_result_name_tmp])
+                
+                else:
+                    print("less than 10 pixels in line fitting!")
+            
+            line_result = np.concatenate([comp_result, gauss_result, fur_result])
+            line_result_type = np.concatenate([comp_result_type, gauss_result_type, fur_result_type])
+            line_result_name = np.concatenate([comp_result_name, gauss_result_name, fur_result_name])
+        
+        else:
+            line_result = np.array([])
+            line_result_name = np.array([])
+            comp_result = np.array([])
+            gauss_result = np.array([])
+            gauss_result_name = np.array([])
+            line_result_type = np.array([])
+            ncomp = 0
+            all_comp_range = np.array([])
+            uniq_linecomp_sort = np.array([])
+            print("No line to fit! Pleasse set Line_fit to FALSE or enlarge wave_range!")
+        
+        self.comp_result = comp_result
+        self.gauss_result = gauss_result
+        self.gauss_result_name = gauss_result_name
+        self.line_result = line_result
+        self.line_result_type = line_result_type
+        self.line_result_name = line_result_name
+        self.ncomp = ncomp
+        self.line_flux = line_flux
+        self.all_comp_range = all_comp_range
+        self.uniq_linecomp_sort = uniq_linecomp_sort
+        return self.line_result, self.line_result_name
+
+
+
+
+# Return LaTeX name for a line / complex name
+def texlinename(name):
+    if name == 'Ha':
+        tname = r'H$\alpha$'
+    elif name == 'Hb':
+        tname = r'H$\beta$'
+    elif name == 'Hr':
+        tname = r'H$\gamma$'
+    elif name == 'Hg':
+        tname = r'H$\gamma$'
+    elif name == 'Lya':
+        tname = r'Ly$\alpha$'
+    else:
+        tname = name
+    return tname
