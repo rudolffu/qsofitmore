@@ -21,6 +21,7 @@ from astropy import units as u
 from PyQSOFit import QSOFit
 from .extinction import *
 import pkg_resources
+import pandas as pd
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 
@@ -414,10 +415,12 @@ class QSOFitNew(QSOFit):
             fur_result = np.array([])
             fur_result_type = np.array([])
             fur_result_name = np.array([])
+            self.na_all_dict = {}
             
             for ii in range(ncomp):
                 compcenter = allcompcenter[ii]
                 ind_line = np.where(linelist['compname'] == uniq_linecomp_sort[ii], True, False)  # get line index
+                linecompname = uniq_linecomp_sort[ii]
                 nline_fit = np.sum(ind_line)  # n line in one complex
                 linelist_fit = linelist[ind_line]
                 # n gauss in each line
@@ -440,9 +443,10 @@ class QSOFitNew(QSOFit):
                     
                     # calculate MC err
                     if self.MC == True and self.n_trails > 0:
-                        all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std = self._line_mc(
+                        all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
                             np.log(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
-                            self.n_trails, compcenter)
+                            self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
+                        self.na_all_dict.update(na_dict)
                     
                     # ----------------------get line fitting results----------------------
                     # complex parameters
@@ -560,6 +564,84 @@ class QSOFitNew(QSOFit):
         self.uniq_linecomp_sort = uniq_linecomp_sort
         return self.line_result, self.line_result_name
 
+
+    # ---------MC error for emission line parameters-------------------
+    def new_line_mc(self, x, y, err, pp0, pp_limits, n_trails, compcenter, linecompname,
+                    ind_line, nline_fit, linelist_fit, ngauss_fit):
+        """calculate the Monte Carlo errror of line parameters"""
+        linelist = self.linelist
+        linenames = linelist[linelist['compname']==linecompname]['linename']
+        all_para_1comp = np.zeros(len(pp0)*n_trails).reshape(len(pp0), n_trails)
+        all_para_std = np.zeros(len(pp0))
+        all_fwhm = np.zeros(n_trails)
+        all_sigma = np.zeros(n_trails)
+        all_ew = np.zeros(n_trails)
+        all_peak = np.zeros(n_trails)
+        all_area = np.zeros(n_trails)
+        na_all_dict = {}
+        for line in linenames: 
+            if 'br' not in line and 'na' not in line:
+                emp_dict = {'fwhm': [],
+                            'sigma' : [],
+                            'ew' : [],
+                            'peak' : [],
+                            'area' : []}
+                na_all_dict.setdefault(line, emp_dict)
+
+        for tra in range(n_trails):
+            flux = y+np.random.randn(len(y))*err
+            line_fit = kmpfit.Fitter(residuals=self._residuals_line, data=(x, flux, err), maxiter=50)
+            line_fit.parinfo = pp_limits
+            line_fit.fit(params0=pp0)
+            line_fit.params = self.newpp
+            all_para_1comp[:, tra] = line_fit.params
+            
+            # further line properties
+            all_fwhm[tra], all_sigma[tra], all_ew[tra], all_peak[tra], all_area[tra] 
+            broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
+            all_fwhm[tra] = broad_all[0]
+            all_sigma[tra] =  broad_all[1]
+            all_ew[tra] = broad_all[2]
+            all_peak[tra] = broad_all[3]
+            all_area[tra] = broad_all[4]     
+            all_line_name = []
+            for n in range(nline_fit):
+                for nn in range(int(ngauss_fit[n])):
+                    # line_name = linelist['linename'][ind_line][n]+'_'+str(nn+1)
+                    line_name = linelist['linename'][ind_line][n]
+                    # print(line_name)
+                    all_line_name.append(line_name)
+            all_line_name = np.asarray(all_line_name)
+
+            for line in linenames: 
+                if 'br' not in line and 'na' not in line:
+                    try:
+                        par_ind = np.where(all_line_name==line)[0][0]*3
+                        linecenter = linelist[linelist['linename']==line]['lambda']
+                        na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
+                        # print(line+'params: {}'.format(line_fit.params))
+                        # print('The index of the param is {}'.format(par_ind))
+                        na_all_dict[line]['fwhm'].append(na_tmp[0])
+                        na_all_dict[line]['sigma'].append(na_tmp[1])
+                        na_all_dict[line]['ew'].append(na_tmp[2])
+                        na_all_dict[line]['peak'].append(na_tmp[3])
+                        na_all_dict[line]['area'].append(na_tmp[4])
+                    except:
+                        print('Mismatch.')
+                        pass
+                    
+        for line in linenames: 
+            if 'br' not in line and 'na' not in line:
+                na_all_dict[line]['fwhm'] = np.asarray(na_all_dict[line]['fwhm']).flatten()
+                na_all_dict[line]['sigma'] = np.asarray(na_all_dict[line]['sigma']).flatten()
+                na_all_dict[line]['ew'] = np.asarray(na_all_dict[line]['ew']).flatten()
+                na_all_dict[line]['peak'] = np.asarray(na_all_dict[line]['peak']).flatten()
+                na_all_dict[line]['area'] = np.asarray(na_all_dict[line]['area']).flatten()
+       
+        for st in range(len(pp0)):
+            all_para_std[st] = all_para_1comp[st, :].std()
+        
+        return all_para_std, all_fwhm.std(), all_sigma.std(), all_ew.std(), all_peak.std(), all_area.std(), na_all_dict
 
 
 
