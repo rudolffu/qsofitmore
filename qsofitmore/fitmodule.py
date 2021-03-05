@@ -27,6 +27,8 @@ datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 
 __all__ = ['QSOFitNew']
 
+getnonzeroarr = lambda x: x[x != 0]
+
 class QSOFitNew(QSOFit):
 
     def __init__(self, lam, flux, err, z, ra=- 999., dec=-999., name=None, plateid=None, mjd=None, fiberid=None, 
@@ -607,9 +609,7 @@ class QSOFitNew(QSOFit):
             all_line_name = []
             for n in range(nline_fit):
                 for nn in range(int(ngauss_fit[n])):
-                    # line_name = linelist['linename'][ind_line][n]+'_'+str(nn+1)
                     line_name = linelist['linename'][ind_line][n]
-                    # print(line_name)
                     all_line_name.append(line_name)
             all_line_name = np.asarray(all_line_name)
 
@@ -617,10 +617,8 @@ class QSOFitNew(QSOFit):
                 if 'br' not in line and 'na' not in line:
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
-                        linecenter = linelist[linelist['linename']==line]['lambda']
+                        linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
                         na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
-                        # print(line+'params: {}'.format(line_fit.params))
-                        # print('The index of the param is {}'.format(par_ind))
                         na_all_dict[line]['fwhm'].append(na_tmp[0])
                         na_all_dict[line]['sigma'].append(na_tmp[1])
                         na_all_dict[line]['ew'].append(na_tmp[2])
@@ -632,11 +630,11 @@ class QSOFitNew(QSOFit):
                     
         for line in linenames: 
             if 'br' not in line and 'na' not in line:
-                na_all_dict[line]['fwhm'] = np.asarray(na_all_dict[line]['fwhm']).flatten()
-                na_all_dict[line]['sigma'] = np.asarray(na_all_dict[line]['sigma']).flatten()
-                na_all_dict[line]['ew'] = np.asarray(na_all_dict[line]['ew']).flatten()
-                na_all_dict[line]['peak'] = np.asarray(na_all_dict[line]['peak']).flatten()
-                na_all_dict[line]['area'] = np.asarray(na_all_dict[line]['area']).flatten()
+                na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
+                na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
+                na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
+                na_all_dict[line]['peak'] = getnonzeroarr(np.asarray(na_all_dict[line]['peak']))
+                na_all_dict[line]['area'] = getnonzeroarr(np.asarray(na_all_dict[line]['area']))
        
         for st in range(len(pp0)):
             all_para_std[st] = all_para_1comp[st, :].std()
