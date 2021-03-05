@@ -8,5 +8,6 @@ A wrapper of PyQSOFit for customization
 - LaTeX rendering for line names in plots. 
 
 ### To do:  
-- Parallel the MC processes
-- Intergrate narrow line measurements to the output fits file
+- Parallel the MC processes.
+- Intergrate narrow line measurements to the output fits file. 
+- A simple tutorial of using `qsofitmore' with example(s).  
