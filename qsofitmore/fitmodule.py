@@ -1,7 +1,7 @@
 #!/usr/bin/env python
-from mmap import MAP_ANONYMOUS
-from os import name
-from re import T
+# from mmap import MAP_ANONYMOUS
+# from os import name
+# from re import T
 import sys
 import glob
 import matplotlib
@@ -21,7 +21,7 @@ from astropy import units as u
 from PyQSOFit import QSOFit
 from .extinction import *
 import pkg_resources
-import pandas as pd
+# import pandas as pd
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 
