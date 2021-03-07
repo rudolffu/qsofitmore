@@ -5,8 +5,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="PyQSOFit", 
-    version="1.0",
-    author="Hengxiao Guo, Shu Wang, and Yue Shen",
+    version="1.1",
+    author="Hengxiao Guo, Shu Wang, Yue Shen and Wenke Ren",
     author_email="hengxiaoguo@gmail.com",
     description="A code to fit the spectrum of quasar",
     long_description=long_description,
