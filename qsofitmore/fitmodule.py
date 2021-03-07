@@ -20,6 +20,7 @@ from astropy.coordinates import SkyCoord
 from astropy import units as u
 from PyQSOFit import QSOFit
 from .extinction import *
+from .auxmodule import *
 import pkg_resources
 # import pandas as pd
 
@@ -643,18 +644,3 @@ class QSOFitNew(QSOFit):
 
 
 
-# Return LaTeX name for a line / complex name
-def texlinename(name):
-    if name == 'Ha':
-        tname = r'H$\alpha$'
-    elif name == 'Hb':
-        tname = r'H$\beta$'
-    elif name == 'Hr':
-        tname = r'H$\gamma$'
-    elif name == 'Hg':
-        tname = r'H$\gamma$'
-    elif name == 'Lya':
-        tname = r'Ly$\alpha$'
-    else:
-        tname = name
-    return tname
