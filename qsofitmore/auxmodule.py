@@ -2,7 +2,7 @@
 
 
 # Return LaTeX name for a line / complex name
-def texlinename(name):
+def texlinename(name) -> str:
     if name == 'Ha':
         tname = r'H$\alpha$'
     elif name == 'Hb':
