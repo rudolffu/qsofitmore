@@ -233,8 +233,6 @@ class QSOFitNew(QSOFit):
             pass
         if self.is_sdss == False and name is None:
             print("Bad figure name!")
-        self.save_result = save_result
-        save_result = False
         return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
                            deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
                            decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
@@ -550,10 +548,18 @@ class QSOFitNew(QSOFit):
             all_comp_range = np.array([])
             uniq_linecomp_sort = np.array([])
             print("No line to fit! Pleasse set Line_fit to FALSE or enlarge wave_range!")
-        
+
         self.comp_result = comp_result
         self.gauss_result = gauss_result
         self.gauss_result_name = gauss_result_name
+        if self.MC == True and self.na_all_dict:
+            self.cal_na_line_res()
+            na_line_result = np.array(list(self.na_line_result.values()))
+            na_line_result_type = np.full_like(na_line_result,'float',dtype=object)
+            na_line_result_name = np.asarray(list(self.na_line_result.keys()))
+            line_result = np.concatenate([line_result, na_line_result])
+            line_result_type = np.concatenate([line_result_type, na_line_result_type])
+            line_result_name = np.concatenate([line_result_name, na_line_result_name])
         self.line_result = line_result
         self.line_result_type = line_result_type
         self.line_result_name = line_result_name
