@@ -126,8 +126,18 @@ class QSOFitNew(QSOFit):
                                  unit=(u.hourangle, u.deg))
                 ra = coord.ra.value
                 dec = coord.dec.value
+        if 'J' in objname:
+            try:
+                name = designation(ra, dec)
+            except:
+                name = objname
         if path is None:
             path = './'
+        if mjd is None:
+            try:
+                mjd = float(header['mjd'])
+            except:
+                pass
         CRVAL1 = float(header['CRVAL1'])
         CD1_1 = float(header['CD1_1'])
         CRPIX1 = float(header['CRPIX1'])
@@ -153,7 +163,7 @@ class QSOFitNew(QSOFit):
         hdu.close() 
         flux *= 1e17
         err *= 1e17
-        return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=objname, plateid=plateid, 
+        return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=name, plateid=plateid, 
                    mjd=mjd, fiberid=fiberid, path=path, is_sdss=False)
 
     def setmapname(self, mapname):
