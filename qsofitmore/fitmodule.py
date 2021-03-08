@@ -22,7 +22,7 @@ from PyQSOFit import QSOFit
 from .extinction import *
 from .auxmodule import *
 import pkg_resources
-# import pandas as pd
+import pandas as pd
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 
@@ -110,12 +110,6 @@ class QSOFitNew(QSOFit):
         hdu = fits.open(fname)
         header = hdu[0].header
         objname = header['object']
-        # if plateid is None:
-        #     plateid = 0
-        # if mjd is None:
-        #     mjd = 0
-        # if fiberid is None:
-        #     fiberid = 0
         if redshift is None:
             try:
                 redshift = float(header['redshift'])
@@ -239,6 +233,8 @@ class QSOFitNew(QSOFit):
             pass
         if self.is_sdss == False and name is None:
             print("Bad figure name!")
+        self.save_result = save_result
+        save_result = False
         return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
                            deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
                            decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
@@ -643,4 +639,28 @@ class QSOFitNew(QSOFit):
         return all_para_std, all_fwhm.std(), all_sigma.std(), all_ew.std(), all_peak.std(), all_area.std(), na_all_dict
 
 
+    def cal_na_line_res(self):
+        linelist = self.linelist
+        na_line_result = {}
+        df_gauss = pd.DataFrame(data=np.array([self.gauss_result]),
+                                columns=self.gauss_result_name)
+        #caution: dtypes are all object for df_gauss, conversion needed.
+        if self.MC == True and self.na_all_dict:
+            for line in self.na_all_dict.keys():
+                linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
+                line_scale = np.float(df_gauss[line+'_1_scale'])
+                line_centerwave = np.float(df_gauss[line+'_1_centerwave'])
+                line_sigma = np.float(df_gauss[line+'_1_sigma'])
+                line_param = np.array([line_scale,line_centerwave,line_sigma])
+                na_tmp = self.line_prop(linecenter, line_param, 'narrow')
+                par_list = list(self.na_all_dict[line].keys())
+                for i in range(len(par_list)):
+                    par = par_list[i]
+                    res_name_tmp = line+'_'+par
+                    res_tmp = na_tmp[i]
+                    err_name_tmp = line+'_'+par+'_err'
+                    err_tmp = self.na_all_dict[line][par].std()
+                    na_line_result.update({res_name_tmp:res_tmp})
+                    na_line_result.update({err_name_tmp:err_tmp})
+        self.na_line_result = na_line_result
 
