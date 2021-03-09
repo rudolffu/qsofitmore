@@ -29,6 +29,7 @@ datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 __all__ = ['QSOFitNew']
 
 getnonzeroarr = lambda x: x[x != 0]
+sciplotstyle()
 
 class QSOFitNew(QSOFit):
 
@@ -317,7 +318,9 @@ class QSOFitNew(QSOFit):
         if self.ra == -999. or self.dec == -999.:
             ax.set_title(str(self.sdss_name)+'   z = '+str(np.round(z, 4)), fontsize=20)
         else:
-            ax.set_title('ra,dec = ('+str(ra)+','+str(dec)+')   '+str(self.sdss_name)+'   z = '+str(np.round(z, 4)),
+            # ax.set_title('ra,dec = ('+str(ra)+','+str(dec)+')   '+str(self.sdss_name)+'   $z$ = '+str(np.round(z, 4)),
+                        #  fontsize=20)
+            ax.set_title('ra, dec = ({:.6f}, {:.6f})   {}    $z$ = {:.4f}'.format(ra, dec, self.sdss_name, z),
                          fontsize=20)
         
         ax.plot(self.wave_prereduced, self.flux_prereduced, 'k', label='data', zorder=2)
@@ -348,7 +351,7 @@ class QSOFitNew(QSOFit):
         ax.set_ylim(plot_bottom*0.9, self.flux_prereduced.max()*1.1)
         
         if self.plot_legend == True:
-            ax.legend(loc='best', frameon=False, ncol=2, fontsize=10)
+            ax.legend(loc='best', frameon=False, ncol=2)
         
         # plot line name--------
         if self.plot_line_name == True:
@@ -366,22 +369,22 @@ class QSOFitNew(QSOFit):
             for ll in range(len(line_cen)):
                 if wave.min() < line_cen[ll] < wave.max():
                     ax.plot([line_cen[ll], line_cen[ll]], [plot_bottom*0.9, self.flux_prereduced.max()*1.1], 'k:')
-                    ax.text(line_cen[ll]+7, 1.08*self.flux_prereduced.max(), line_name[ll], rotation=90, fontsize=10,
+                    ax.text(line_cen[ll]+7, 1.08*self.flux_prereduced.max(), line_name[ll], rotation=90, fontsize=16,
                             va='top')
         
         ax.set_xlim(wave.min(), wave.max())
         
         if linefit == True:
-            ax.text(0.5, -1.4, r'$\rm Rest \, Wavelength$ ($\rm \AA$)', fontsize=20, transform=ax.transAxes,
+            ax.text(0.5, -1.45, r'Rest-frame wavelength ($\rm \AA$)', fontsize=22, transform=ax.transAxes,
                     ha='center')
-            ax.text(-0.1, -0.1, r'$\rm f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=20,
+            ax.text(-0.07, -0.1, r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22,
                     transform=ax.transAxes, rotation=90, ha='center', rotation_mode='anchor')
         else:
-            plt.xlabel(r'$\rm Rest \, Wavelength$ ($\rm \AA$)', fontsize=20)
-            plt.ylabel(r'$\rm f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=20)
+            plt.xlabel(r'Rest-frame wavelength ($\rm \AA$)', fontsize=22)
+            plt.ylabel(r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
         
         if self.save_fig == True:
-            plt.savefig(save_fig_path+self.sdss_name+'.pdf')
+            plt.savefig(save_fig_path+self.sdss_name+'.pdf', bbox_inches='tight')
         plt.show()
         plt.close()
     
