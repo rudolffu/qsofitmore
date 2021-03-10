@@ -22,12 +22,15 @@ def texlinename(name) -> str:
     return tname
 
 
-def designation(ra, dec) -> str:
+def designation(ra, dec, telescope=None) -> str:
     c = SkyCoord(ra=ra*u.degree, 
                  dec=dec*u.degree,frame='icrs')
     srahms = c.ra.to_string(unit=u.hourangle, sep='', precision=2, pad=True)
     sdecdms = c.dec.to_string(sep='', precision=1, alwayssign=True, pad=True)
-    newname = 'J'+srahms+sdecdms
+    if telescope is not None:
+        newname = 'J'+srahms+sdecdms+'_'+str(telescope)
+    else:
+        newname = 'J'+srahms+sdecdms
     return newname
 
 
