@@ -132,6 +132,8 @@ class QSOFitNew(QSOFit):
                 name = designation(ra, dec, telescope)
             except:
                 name = objname
+        else:
+            name = objname
         if path is None:
             path = './'
         if mjd is None:
@@ -385,6 +387,7 @@ class QSOFitNew(QSOFit):
         
         if self.save_fig == True:
             plt.savefig(save_fig_path+self.sdss_name+'.pdf', bbox_inches='tight')
+            # plt.savefig(save_fig_path+self.sdss_name+'.jpg', dpi=300, bbox_inches='tight')
         plt.show()
         plt.close()
     
@@ -598,7 +601,7 @@ class QSOFitNew(QSOFit):
         all_area = np.zeros(n_trails)
         na_all_dict = {}
         for line in linenames: 
-            if 'br' not in line and 'na' not in line:
+            if ('br' not in line and 'na' not in line) or ('H' in line):
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -630,7 +633,7 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if 'br' not in line and 'na' not in line:
+                if ('br' not in line and 'na' not in line) or ('H' in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -645,7 +648,7 @@ class QSOFitNew(QSOFit):
                         pass
                     
         for line in linenames: 
-            if 'br' not in line and 'na' not in line:
+            if ('br' not in line and 'na' not in line) or ('H' in line):
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
