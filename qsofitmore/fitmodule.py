@@ -99,14 +99,14 @@ class QSOFitNew(QSOFit):
         Returns:
         ----------
             cls : class
-                A QSOFit object.
+                A QSOFitNew object.
         Other parameters:
         ----------
             plateid, mjd, and fiberid: int
                 Default None for non-SDSS spectra.
         Example:
         ----------
-        q = QSOFit.fromiraf("custom_iraf_spectrum.fits", redshift=0.01, path=path)
+        q = QSOFitNew.fromiraf("custom_iraf_spectrum.fits", redshift=0.01, path=path)
         """
         hdu = fits.open(fname)
         header = hdu[0].header
@@ -163,6 +163,86 @@ class QSOFitNew(QSOFit):
             err = data[3,0,:]
         else:
             raise NotImplementedError("The IRAF spectrum has yet to be provided, not implemented.")
+        hdu.close() 
+        flux *= 1e17
+        err *= 1e17
+        return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=name, plateid=plateid, 
+                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=False)
+
+    @classmethod
+    def fromcomb1d(cls, fname, redshift=None, path=None, plateid=None, mjd=None, fiberid=None, 
+                 ra=None, dec=None, telescope=None):
+        """
+        Initialize QSOFit object from a combined spectra
+        with two extensions, the first and second 
+        extensions of which are flux and flux errors
+        respectively.
+        Parameters:
+        ----------
+            fname : str
+                name of the fits file.
+            redshift : float
+                redshift of the spectrum. Should be provided if not recorded in the fits header.
+            path : str
+                working directory.
+        Returns:
+        ----------
+            cls : class
+                A QSOFitNew object.
+        Other parameters:
+        ----------
+            plateid, mjd, and fiberid: int
+                Default None for non-SDSS spectra.
+        Example:
+        ----------
+        q = QSOFitNew.fromcomb1d("custom_iraf_spectrum.fits", redshift=0.01, path=path)
+        """
+        hdu = fits.open(fname)
+        header = hdu[0].header
+        objname = header['object']
+        if redshift is None:
+            try:
+                redshift = float(header['redshift'])
+            except:
+                print("Redshift not provided, setting redshift to zero.")
+                redshift = 0
+        if ra is None or dec is None:
+            try:
+                ra = float(header['ra'])
+                dec = float(header['dec'])
+            except:
+                coord = SkyCoord(header['RA']+header['DEC'], 
+                                 frame='icrs',
+                                 unit=(u.hourangle, u.deg))
+                ra = coord.ra.value
+                dec = coord.dec.value
+        if 'J' in objname:
+            try:
+                name = designation(ra, dec, telescope)
+            except:
+                name = objname
+        else:
+            name = objname
+        if path is None:
+            path = './'
+        if mjd is None:
+            try:
+                mjd = float(header['mjd'])
+            except:
+                pass
+        CRVAL1 = float(header['CRVAL1'])
+        try:
+            CD1_1 = float(header['CD1_1'])
+        except:
+            CD1_1 = float(header['CDELT1'])
+        CRPIX1 = float(header['CRPIX1'])
+        data = hdu[0].data
+        l = len(data)
+        wave = np.linspace(CRVAL1, 
+                           CRVAL1 + (l - CRPIX1) * CD1_1, 
+                           l)
+        flux = data
+        err = hdu[1].data
         hdu.close() 
         flux *= 1e17
         err *= 1e17
