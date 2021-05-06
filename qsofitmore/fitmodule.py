@@ -684,6 +684,9 @@ class QSOFitNew(QSOFit):
                     res_tmp = na_tmp[i]
                     err_name_tmp = line+'_'+par+'_err'
                     err_tmp = self.na_all_dict[line][par].std()
+                    if res_tmp == 0:
+                        res_tmp = 0.0
+                        err_tmp = 0.0
                     na_line_result.update({res_name_tmp:res_tmp})
                     na_line_result.update({err_name_tmp:err_tmp})
         self.na_line_result = na_line_result
