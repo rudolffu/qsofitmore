@@ -387,9 +387,9 @@ class QSOFitNew(QSOFit):
         
         if self.save_fig == True:
             plt.savefig(save_fig_path+self.sdss_name+'.pdf', bbox_inches='tight')
-            # plt.savefig(save_fig_path+self.sdss_name+'.jpg', dpi=300, bbox_inches='tight')
-        plt.show()
-        plt.close()
+            plt.savefig(save_fig_path+self.sdss_name+'.jpg', dpi=300, bbox_inches='tight')
+        # plt.show()
+        # plt.close()
     
 
     # line function-----------
@@ -549,10 +549,12 @@ class QSOFitNew(QSOFit):
                 else:
                     print("less than 10 pixels in line fitting!")
             
-            line_result = np.concatenate([comp_result, gauss_result, fur_result])
-            line_result_type = np.concatenate([comp_result_type, gauss_result_type, fur_result_type])
-            line_result_name = np.concatenate([comp_result_name, gauss_result_name, fur_result_name])
-        
+            # line_result = np.concatenate([comp_result, gauss_result, fur_result])
+            # line_result_type = np.concatenate([comp_result_type, gauss_result_type, fur_result_type])
+            # line_result_name = np.concatenate([comp_result_name, gauss_result_name, fur_result_name])
+            line_result = np.concatenate([comp_result, fur_result])
+            line_result_type = np.concatenate([comp_result_type, fur_result_type])
+            line_result_name = np.concatenate([comp_result_name, fur_result_name])        
         else:
             line_result = np.array([])
             line_result_name = np.array([])
