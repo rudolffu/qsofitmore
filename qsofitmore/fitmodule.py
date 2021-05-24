@@ -315,7 +315,8 @@ class QSOFitNew(QSOFit):
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, save_fig_path=None,
-            save_fits_path=None, save_fits_name=None):
+            save_fits_path=None, save_fits_name=None, mask_compname=None):
+        self.mask_compname = mask_compname
         if name is None and save_fits_name is not None:
             name = save_fits_name
             print("Name is now {}.".format(name))
@@ -485,6 +486,9 @@ class QSOFitNew(QSOFit):
         # read line parameter
         linepara = fits.open(self.path+'qsopar.fits')
         linelist = linepara[1].data
+        mask_compname = self.mask_compname
+        if mask_compname is not None:
+            linelist = linelist[linelist['compname']!=mask_compname]
         self.linelist = linelist
         
         ind_kind_line = np.where((linelist['lambda'] > wave.min()) & (linelist['lambda'] < wave.max()), True, False)
