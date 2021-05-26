@@ -327,6 +327,8 @@ class QSOFitNew(QSOFit):
             pass
         if self.is_sdss == False and name is None:
             print("Bad figure name!")
+        if self.z > 2.5:
+            poly = False
         return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
                            deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
                            decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
