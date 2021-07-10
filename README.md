@@ -1,4 +1,4 @@
-# qsofitmore
+# QSOFITMORE
 A wrapper of PyQSOFit for customization
 
 ### Features  
