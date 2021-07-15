@@ -110,7 +110,6 @@ class QSOFitNew(QSOFit):
         """
         hdu = fits.open(fname)
         header = hdu[0].header
-        objname = header['object']
         if redshift is None:
             try:
                 redshift = float(header['redshift'])
@@ -127,6 +126,10 @@ class QSOFitNew(QSOFit):
                                  unit=(u.hourangle, u.deg))
                 ra = coord.ra.value
                 dec = coord.dec.value
+        try:
+            objname = header['object']
+        except:
+            objname = designation(ra, dec, telescope)
         if 'J' in objname:
             try:
                 name = designation(ra, dec, telescope)
