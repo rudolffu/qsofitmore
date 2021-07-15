@@ -154,7 +154,8 @@ class QSOFitNew(QSOFit):
             wave = np.linspace(CRVAL1, 
                                CRVAL1 + (l - CRPIX1) * CD1_1, 
                                l)
-            flux = data
+            wave = wave.flatten()
+            flux = data.flatten()
             err = None
         elif dim==3:
             l = data.shape[2]
@@ -168,7 +169,8 @@ class QSOFitNew(QSOFit):
             raise NotImplementedError("The IRAF spectrum has yet to be provided, not implemented.")
         hdu.close() 
         flux *= 1e17
-        err *= 1e17
+        if err is not None:
+            err *= 1e17
         return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=name, plateid=plateid, 
                    mjd=mjd, fiberid=fiberid, path=path, is_sdss=False)
 
