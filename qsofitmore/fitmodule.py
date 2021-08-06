@@ -25,6 +25,7 @@ import pkg_resources
 import pandas as pd
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
+dustmap_path = pkg_resources.resource_filename('PyQSOFit', '/sfddata/')
 
 __all__ = ['QSOFitNew']
 
@@ -319,8 +320,8 @@ class QSOFitNew(QSOFit):
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, Fe_uv_op=True,
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
-            plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, save_fig_path=None,
-            save_fits_path=None, save_fits_name=None, mask_compname=None):
+            plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=dustmap_path, 
+            save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None):
         self.mask_compname = mask_compname
         if name is None and save_fits_name is not None:
             name = save_fits_name
