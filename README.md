@@ -141,7 +141,7 @@ path = "./output/"
 ### 2.3 Initialise an instance of `QSOFitNew` from a custom spectrum 
 
 #### a) From numpy-array like data 
-We can read an example spectrum in csv format using `pandas`, and load the data to `QSOFitNew` manually. The data should contain wavelength (in $\AA$), flux and flux error (both in $\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\,\AA^{-1}$). In this example, I have already converted the flux and error to $\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\,\AA^{-1}$. The object of interest is UGC 3374, which has $z=0.02004$, $\rm ra=88.72336906$, and $\rm dec=46.43934051$.
+We can read an example spectrum in csv format using `pandas`, and load the data to `QSOFitNew` manually. The data should contain wavelength (in Å), flux and flux error (both in 10^{-17} erg/s/cm^2/Å). In this example, I have already converted the flux and error to 10^{-17} erg/s/cm^2/Å. The object of interest is UGC 3374, which has z=0.02004, ra=88.72336906, and dec=46.43934051.
 
 
 ```python
@@ -186,15 +186,13 @@ BANDID1 = 'spectrum - background fit, weights variance, clean no'
 BANDID2 = 'raw - background fit, weights none, clean no'                        
 BANDID3 = 'background - background fit'                                         
 BANDID4 = 'sigma - background fit, weights variance, clean no'  
-The first and fourth bands are flux and flux error, respectively, in unit $\rm erg\;s^{-1}\;cm^{-2}\,\AA^{-1}$
+The first and fourth bands are flux and flux error, respectively, in unit erg/s/cm^2/Å.
 You can simply load the data with the classmethod `QSOFitNew.fromiraf`, which does the unit conversion automatically.
 
 
 ```python
 q = QSOFitNew.fromiraf("./data/UGC_3374_ccds.fits",redshift=0.02004,telescope='1.3m',path=path)
 ```
-
-    1170
 
 
 ### 2.4 Fit the spectrum 
@@ -228,16 +226,9 @@ q.Fit(name = None, deredden = True, wave_range = None, wave_mask =None,
       save_fits_name = None)
 ```
 
-    Name is now UGC_3374.
-    `mapname` for extinction not set.
-    Setting `mapname` to `sfd`.
-
-
-
     
 ![jpg](qsofitmore/examples/output/UGC_3374.jpg)
     
-
 
 #### Print fitting results
 Try: 
