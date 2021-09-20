@@ -3,6 +3,7 @@ from math import log
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FlatLambdaCDM
+from ipywidgets.widgets.widget_controller import Axis
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
@@ -16,7 +17,7 @@ def broken_pl_model(wave, a1, a2, b):
     w_break = wave[wave<4661][-1]
     f_blue = b*(w_blue/3.0e3)**a1
     f_red = f_blue[-1]*(w_red/w_break)**a2
-    return np.concatenate([f_blue,f_red])
+    return np.concatenate((f_blue,f_red), axis=None)
 
 # Return LaTeX name for a line / complex name
 def texlinename(name) -> str:
