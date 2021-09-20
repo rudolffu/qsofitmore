@@ -10,6 +10,14 @@ from uncertainties import ufloat
 from uncertainties.umath import *
 
 
+def broken_pl_model(wave, a1, a2, b):
+    w_blue = wave[wave<4661]
+    w_red = wave[wave>=4661]
+    w_break = wave[wave<4661][-1]
+    f_blue = b*(w_blue/3.0e3)**a1
+    f_red = f_blue[-1]*(w_red/w_break)**a2
+    return np.concatenate([f_blue,f_red])
+
 # Return LaTeX name for a line / complex name
 def texlinename(name) -> str:
     if name == 'Ha':

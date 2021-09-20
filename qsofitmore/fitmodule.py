@@ -303,26 +303,314 @@ class QSOFitNew(QSOFit):
 
     
     def _DoContiFit(self, wave, flux, err, ra, dec, plateid, mjd, fiberid):
+        """Fit the continuum with PL, Polynomial, UV/optical FeII, Balmer continuum"""
         if self.plateid is None:
             plateid = 0
         if self.plateid is None:
             mjd = 0
         if self.plateid is None:
             fiberid = 0
-        tmp_selfpath = self.path
-        self.path = datapath
-        try:
-            return super()._DoContiFit(wave, flux, err, ra, dec, plateid, mjd, fiberid)
-        finally:
-            self.path = tmp_selfpath
+        # tmp_selfpath = self.path
+        # self.path = datapath
+        # global fe_uv, fe_op
+        self.fe_uv = np.genfromtxt(datapath+'fe_uv.txt')
+        self.fe_op = np.genfromtxt(datapath+'fe_optical.txt')
+        
+        # do continuum fit--------------------------
+        window_all = np.array(
+            [[1150., 1170.], [1275., 1290.], [1350., 1360.], [1445., 1465.], [1690., 1705.], [1770., 1810.],
+             [1970., 2400.], [2480., 2675.], [2925., 3400.], [3775., 3832.], [4000., 4050.], [4200., 4230.],
+             [4435., 4640.], [5100., 5535.], [6005., 6035.], [6110., 6250.], [6800., 7000.], [7160., 7180.],
+             [7500., 7800.], [8050., 8150.], ])
+        
+        tmp_all = np.array([np.repeat(False, len(wave))]).flatten()
+        for jj in range(len(window_all)):
+            tmp = np.where((wave > window_all[jj, 0]) & (wave < window_all[jj, 1]), True, False)
+            tmp_all = np.any([tmp_all, tmp], axis=0)
+        
+        if wave[tmp_all].shape[0] < 10:
+            print('Continuum fitting pixel < 10.  ')
+        
+        # set initial paramiters for continuum
+        if self.initial_guess is not None:
+            pp0 = self.initial_guess
+        else:
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0.])
+        if self.broken_pl == True:
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0., -0.35])
+        conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
+        tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
+                       {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
+                       {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, {'limits': (0., 10.**10)},
+                       {'limits': (10000., 50000.)}, {'limits': (0.1, 2.)}, None, None, None, ]
+        if self.broken_pl == True:
+            conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
+            tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
+                           {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
+                           {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, {'limits': (0., 10.**10)},
+                           {'limits': (10000., 50000.)}, {'limits': (0.1, 2.)}, None, None, None, 
+                           {'limits': (-5., 3.)},]
+        conti_fit.parinfo = tmp_parinfo
+        conti_fit.fit(params0=pp0)
+        
+        # Perform one iteration to remove 3sigma pixel below the first continuum fit
+        # to avoid the continuum windows falls within a BAL trough
+        if self.rej_abs == True:
+            if self.poly == True and self.broken_pl == False:
+                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/3000.0)**conti_fit.params[7]+self.F_poly_conti(
+                    wave[tmp_all], conti_fit.params[11:14]))
+            elif self.poly ==False and self.broken_pl == False:
+                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/3000.0)**conti_fit.params[7])
+            elif self.poly == True and self.broken_pl == True:
+                tmp_conti = broken_pl_model(wave[tmp_all],
+                                            conti_fit.params[7],
+                                            conti_fit.params[14],
+                                            conti_fit.params[6])+self.F_poly_conti(wave[tmp_all], 
+                                                                                   conti_fit.params[11:14])
+            elif self.poly == False and self.broken_pl == True:
+                tmp_conti = broken_pl_model(wave[tmp_all],
+                                            conti_fit.params[7],
+                                            conti_fit.params[14],
+                                            conti_fit.params[6])
+            ind_noBAL = ~np.where(((flux[tmp_all] < tmp_conti-3.*err[tmp_all]) & (wave[tmp_all] < 3500.)), True, False)
+            f = kmpfit.Fitter(residuals=self._residuals, data=(
+                wave[tmp_all][ind_noBAL], self.Smooth(flux[tmp_all][ind_noBAL], 10), err[tmp_all][ind_noBAL]))
+            conti_fit.parinfo = tmp_parinfo
+            conti_fit.fit(params0=pp0)
+        
+        # calculate continuum luminoisty
+        L = self._L_conti(wave, conti_fit.params)
+        
+        # calculate FeII flux
+        Fe_flux_result = np.array([])
+        Fe_flux_type = np.array([])
+        Fe_flux_name = np.array([])
+        if self.Fe_flux_range is not None:
+            Fe_flux_result, Fe_flux_type, Fe_flux_name = self.Get_Fe_flux(self.Fe_flux_range, conti_fit.params[:6])
+        
+        # get conti result -----------------------------
+        if self.MC == True and self.n_trails > 0:
+            # calculate MC err
+            conti_para_std, all_L_std, Fe_flux_std = self._conti_mc(self.wave[tmp_all], self.flux[tmp_all],
+                                                                    self.err[tmp_all], pp0, conti_fit.parinfo,
+                                                                    self.n_trails)
+            
+            self.conti_result = np.array(
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                 conti_para_std[0], conti_fit.params[1], conti_para_std[1], conti_fit.params[2], conti_para_std[2],
+                 conti_fit.params[3], conti_para_std[3], conti_fit.params[4], conti_para_std[4], conti_fit.params[5],
+                 conti_para_std[5], conti_fit.params[6], conti_para_std[6], conti_fit.params[7], conti_para_std[7],
+                 conti_fit.params[8], conti_para_std[8], conti_fit.params[9], conti_para_std[9], conti_fit.params[10],
+                 conti_para_std[10], conti_fit.params[11], conti_para_std[11], conti_fit.params[12], conti_para_std[12],
+                 conti_fit.params[13], conti_para_std[13], L[0], all_L_std[0], L[1], all_L_std[1], L[2], all_L_std[2]])
+            self.conti_result_type = np.array(
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                 'float', 'float', 'float', 'float', 'float', 'float', 'float'])
+            self.conti_result_name = np.array(
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
+                 'Fe_uv_FWHM', 'Fe_uv_FWHM_err', 'Fe_uv_shift', 'Fe_uv_shift_err', 'Fe_op_norm', 'Fe_op_norm_err',
+                 'Fe_op_FWHM', 'Fe_op_FWHM_err', 'Fe_op_shift', 'Fe_op_shift_err', 'PL_norm', 'PL_norm_err', 'PL_slope',
+                 'PL_slope_err', 'Blamer_norm', 'Blamer_norm_err', 'Balmer_Te', 'Balmer_Te_err', 'Balmer_Tau',
+                 'Balmer_Tau_err', 'POLY_a', 'POLY_a_err', 'POLY_b', 'POLY_b_err', 'POLY_c', 'POLY_c_err', 'L1350',
+                 'L1350_err', 'L3000', 'L3000_err', 'L5100', 'L5100_err'])
+            if self.broken_pl == True:
+                self.conti_result = np.concatenate((self.conti_result, 
+                                                    conti_fit.params[14], 
+                                                    conti_para_std[14]), axis=None)
+                self.conti_result_type = np.concatenate((self.conti_result_type, 
+                                                         'float', 
+                                                         'float'), axis=None)
+                self.conti_result_name = np.concatenate((self.conti_result_name, 
+                                                         'PL_slope2', 
+                                                         'PL_slope2_err'), axis=None)                                         
+            for iii in range(Fe_flux_result.shape[0]):
+                self.conti_result = np.append(self.conti_result, [Fe_flux_result[iii], Fe_flux_std[iii]])
+                self.conti_result_type = np.append(self.conti_result_type, [Fe_flux_type[iii], Fe_flux_type[iii]])
+                self.conti_result_name = np.append(self.conti_result_name,
+                                                   [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
+        else:
+            self.conti_result = np.array(
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                 conti_fit.params[1], conti_fit.params[2], conti_fit.params[3], conti_fit.params[4],
+                 conti_fit.params[5], conti_fit.params[6], conti_fit.params[7], conti_fit.params[8],
+                 conti_fit.params[9], conti_fit.params[10], conti_fit.params[11], conti_fit.params[12],
+                 conti_fit.params[13], L[0], L[1], L[2]])
+            self.conti_result_type = np.array(
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                 'float'])
+            self.conti_result_name = np.array(
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
+                 'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'Blamer_norm',
+                 'Balmer_Te', 'Balmer_Tau_e', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
+            if self.broken_pl == True:
+                self.conti_result = np.concatenate((self.conti_result, 
+                                                    conti_fit.params[14]), axis=None)
+                self.conti_result_type = np.concatenate((self.conti_result_type, 
+                                                         'float'), axis=None)
+                self.conti_result_name = np.concatenate((self.conti_result_name, 
+                                                         'PL_slope2'), axis=None)
+            self.conti_result = np.append(self.conti_result, Fe_flux_result)
+            self.conti_result_type = np.append(self.conti_result_type, Fe_flux_type)
+            self.conti_result_name = np.append(self.conti_result_name, Fe_flux_name)
+        
+        self.conti_fit = conti_fit
+        self.tmp_all = tmp_all
+        
+        # save different models--------------------
+        f_fe_mgii_model = self.Fe_flux_mgii(wave, conti_fit.params[0:3])
+        f_fe_balmer_model = self.Fe_flux_balmer(wave, conti_fit.params[3:6])
+        f_pl_model = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]
+        if self.broken_pl == True:
+            f_pl_model = broken_pl_model(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
+        f_bc_model = self.Balmer_conti(wave, conti_fit.params[8:11])
+        f_poly_model = self.F_poly_conti(wave, conti_fit.params[11:14])
+        f_conti_model = (f_pl_model+f_fe_mgii_model+f_fe_balmer_model+f_poly_model+f_bc_model)
+        line_flux = flux-f_conti_model
+        
+        self.f_conti_model = f_conti_model
+        self.f_bc_model = f_bc_model
+        self.f_fe_uv_model = f_fe_mgii_model
+        self.f_fe_op_model = f_fe_balmer_model
+        self.f_pl_model = f_pl_model
+        self.f_poly_model = f_poly_model
+        self.line_flux = line_flux
+        self.PL_poly_BC = f_pl_model+f_poly_model+f_bc_model
+        return self.conti_result, self.conti_result_name      
+
+    
+    def _f_conti_all(self, xval, pp):
+        """
+        Continuum components described by 14 parameters
+         pp[0]: norm_factor for the MgII Fe_template
+         pp[1]: FWHM for the MgII Fe_template
+         pp[2]: small shift of wavelength for the MgII Fe template
+         pp[3:5]: same as pp[0:2] but for the Hbeta/Halpha Fe template
+         pp[6]: norm_factor for continuum f_lambda = (lambda/3000.0)^{-alpha}
+         pp[7]: slope for the power-law continuum (blueward of 4661 A, if self.broken_pl == True)
+         pp[8:10]: norm, Te and Tau_e for the Balmer continuum at <3646 A
+         pp[11:13]: polynomial for the continuum
+         pp[14]: optional, power-law index on the redward of 4661 A, if self.broken_pl == True
+        """
+        # iron flux for MgII line region
+        f_Fe_MgII = self.Fe_flux_mgii(xval, pp[0:3])
+        # iron flux for balmer line region
+        f_Fe_Balmer = self.Fe_flux_balmer(xval, pp[3:6])
+        # power-law continuum
+        f_pl = pp[6]*(xval/3000.0)**pp[7]
+        # Balmer continuum
+        f_conti_BC = self.Balmer_conti(xval, pp[8:11])
+        # polynormal conponent for reddened spectra
+        f_poly = self.F_poly_conti(xval, pp[11:14])
+        if self.broken_pl == True:
+            f_pl = broken_pl_model(xval, pp[7], pp[14], pp[6])
+        
+        if self.Fe_uv_op == True and self.poly == False and self.BC == False:
+            yval = f_pl+f_Fe_MgII+f_Fe_Balmer
+        elif self.Fe_uv_op == True and self.poly == True and self.BC == False:
+            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_poly
+        elif self.Fe_uv_op == True and self.poly == False and self.BC == True:
+            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_conti_BC
+        elif self.Fe_uv_op == False and self.poly == True and self.BC == False:
+            yval = f_pl+f_poly
+        elif self.Fe_uv_op == False and self.poly == False and self.BC == False:
+            yval = f_pl
+        elif self.Fe_uv_op == False and self.poly == False and self.BC == True:
+            yval = f_pl+f_conti_BC
+        elif self.Fe_uv_op == True and self.poly == True and self.BC == True:
+            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_poly+f_conti_BC
+        elif self.Fe_uv_op == False and self.poly == True and self.BC == True:
+            yval = f_pl+f_Fe_Balmer+f_poly+f_conti_BC
+        else:
+            raise RuntimeError('No this option for Fe_uv_op, poly and BC!')
+        return yval
+
+
+    def _L_conti(self, wave, pp):
+        """Calculate continuum Luminoisity at 1350,3000,5100A"""
+        conti_flux = pp[6]*(wave/3000.0)**pp[7]+self.F_poly_conti(wave, pp[11:14])
+        if self.broken_pl == True:
+            conti_flux = broken_pl_model(wave, pp[7], pp[14], pp[6]) + self.F_poly_conti(wave, pp[11:14])
+        # plt.plot(wave,conti_flux)
+        L = np.array([])
+        for LL in zip([1350., 3000., 5100.]):
+            if wave.max() > LL[0] and wave.min() < LL[0]:
+                L_tmp = np.asarray([np.log10(
+                    LL[0]*self.Flux2L(conti_flux[np.where(abs(wave-LL[0]) < 5., True, False)].mean(), self.z))])
+            else:
+                L_tmp = np.array([-1.])
+            L = np.concatenate([L, L_tmp])  # save log10(L1350,L3000,L5100)
+        return L
+
+
+    def Fe_flux_mgii(self, xval, pp):
+        "Fit the UV Fe compoent on the continuum from 1200 to 3500 A based on the Boroson & Green 1992."
+        fe_uv = self.fe_uv
+        yval = np.zeros_like(xval)
+        wave_Fe_mgii = 10**fe_uv[:, 0]
+        flux_Fe_mgii = fe_uv[:, 1]*10**15
+        Fe_FWHM = pp[1]
+        xval_new = xval*(1.0+pp[2])
+        
+        ind = np.where((xval_new > 1200.) & (xval_new < 3500.), True, False)
+        if np.sum(ind) > 100:
+            if Fe_FWHM < 900.0:
+                sig_conv = np.sqrt(910.0**2-900.0**2)/2./np.sqrt(2.*np.log(2.))
+            else:
+                sig_conv = np.sqrt(Fe_FWHM**2-900.0**2)/2./np.sqrt(2.*np.log(2.))  # in km/s
+            # Get sigma in pixel space
+            sig_pix = sig_conv/106.3  # 106.3 km/s is the dispersion for the BG92 FeII template
+            khalfsz = np.round(4*sig_pix+1, 0)
+            xx = np.arange(0, khalfsz*2, 1)-khalfsz
+            kernel = np.exp(-xx**2/(2*sig_pix**2))
+            kernel = kernel/np.sum(kernel)
+            
+            flux_Fe_conv = np.convolve(flux_Fe_mgii, kernel, 'same')
+            tck = interpolate.splrep(wave_Fe_mgii, flux_Fe_conv)
+            yval[ind] = pp[0]*interpolate.splev(xval_new[ind], tck)
+        return yval
+    
+    def Fe_flux_balmer(self, xval, pp):
+        "Fit the optical FeII on the continuum from 3686 to 7484 A based on Vestergaard & Wilkes 2001"
+        fe_op = self.fe_op
+        yval = np.zeros_like(xval)
+        
+        wave_Fe_balmer = 10**fe_op[:, 0]
+        flux_Fe_balmer = fe_op[:, 1]*10**15
+        ind = np.where((wave_Fe_balmer > 3686.) & (wave_Fe_balmer < 7484.), True, False)
+        wave_Fe_balmer = wave_Fe_balmer[ind]
+        flux_Fe_balmer = flux_Fe_balmer[ind]
+        Fe_FWHM = pp[1]
+        xval_new = xval*(1.0+pp[2])
+        ind = np.where((xval_new > 3686.) & (xval_new < 7484.), True, False)
+        if np.sum(ind) > 100:
+            if Fe_FWHM < 900.0:
+                sig_conv = np.sqrt(910.0**2-900.0**2)/2./np.sqrt(2.*np.log(2.))
+            else:
+                sig_conv = np.sqrt(Fe_FWHM**2-900.0**2)/2./np.sqrt(2.*np.log(2.))  # in km/s
+            # Get sigma in pixel space
+            sig_pix = sig_conv/106.3  # 106.3 km/s is the dispersion for the BG92 FeII template
+            khalfsz = np.round(4*sig_pix+1, 0)
+            xx = np.arange(0, khalfsz*2, 1)-khalfsz
+            kernel = np.exp(-xx**2/(2*sig_pix**2))
+            kernel = kernel/np.sum(kernel)
+            flux_Fe_conv = np.convolve(flux_Fe_balmer, kernel, 'same')
+            tck = interpolate.splrep(wave_Fe_balmer, flux_Fe_conv)
+            yval[ind] = pp[0]*interpolate.splev(xval_new[ind], tck)
+        return yval
+
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
-            wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, Fe_uv_op=True,
+            wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
+            broken_pl=False, Fe_uv_op=True,
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=dustmap_path, 
             save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None):
         self.mask_compname = mask_compname
+        self.broken_pl = broken_pl
         if name is None and save_fits_name is not None:
             name = save_fits_name
             print("Name is now {}.".format(name))
@@ -350,9 +638,14 @@ class QSOFitNew(QSOFit):
     def _PlotFig(self, ra, dec, z, wave, flux, err, decomposition_host, linefit, tmp_all, gauss_result, f_conti_model,
                  conti_fit, all_comp_range, uniq_linecomp_sort, line_flux, save_fig_path):
         """Plot the results"""
-        
-        self.PL_poly = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave,
-                                                                                                conti_fit.params[11:])
+        if self.broken_pl == True:
+            self.PL_poly = broken_pl_model(wave, 
+                                           conti_fit.params[7],
+                                           conti_fit.params[14],
+                                           conti_fit.params[6]) + self.F_poly_conti(wave, conti_fit.params[11:14])
+        else:
+            self.PL_poly = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave, 
+                                                                                                    conti_fit.params[11:14])
         
         matplotlib.rc('xtick', labelsize=20)
         matplotlib.rc('ytick', labelsize=20)
@@ -431,9 +724,7 @@ class QSOFitNew(QSOFit):
         ax.plot(wave, f_conti_model, 'c', lw=2, label='FeII', zorder=7)
         if self.BC == True:
             ax.plot(wave, self.f_pl_model+self.f_poly_model+self.f_bc_model, 'y', lw=2, label='BC', zorder=8)
-        ax.plot(wave,
-                conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave, conti_fit.params[11:]),
-                color='orange', lw=2, label='conti', zorder=9)
+        ax.plot(wave, self.f_pl_model+self.f_poly_model, color='orange', lw=2, label='conti', zorder=9)
         if self.decomposed == False:
             plot_bottom = flux.min()
         else:
