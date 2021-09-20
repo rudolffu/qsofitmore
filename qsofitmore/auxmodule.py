@@ -3,7 +3,6 @@ from math import log
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FlatLambdaCDM
-from ipywidgets.widgets.widget_controller import Axis
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
