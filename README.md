@@ -52,7 +52,7 @@ After installing the dependencies, download and set up both `PyQSOFit` and `qsof
 ```
 mkdir ~/tools # or any other path you like
 cd ~/tools 
-git clone https://github.com/legolason/PyQSOFit.git 
+git clone https://github.com/rudolffu/PyQSOFit.git 
 git clone https://github.com/rudolffu/qsofitmore.git 
 cp ~/tools/qsofitmore/qsofitmore/bin/pyqsofit-setup.py ~/tools/PyQSOFit/ 
 cd ~/tools/PyQSOFit  
