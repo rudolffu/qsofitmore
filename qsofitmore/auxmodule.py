@@ -13,10 +13,14 @@ from uncertainties.umath import *
 def broken_pl_model(wave, a1, a2, b):
     w_blue = wave[wave<4661]
     w_red = wave[wave>=4661]
-    w_break = wave[wave<4661][-1]
-    f_blue = b*(w_blue/3.0e3)**a1
-    f_red = f_blue[-1]*(w_red/w_break)**a2
-    return np.concatenate((f_blue,f_red), axis=None)
+    if len(w_blue)>0 and len(w_red)>0:
+        w_break = wave[wave<4661][-1]
+        f_blue = b*(w_blue/3.0e3)**a1
+        f_red = f_blue[-1]*(w_red/w_break)**a2
+        f_all = np.concatenate((f_blue,f_red), axis=None)
+    elif len(w_blue)>0 and len(w_red)==0:
+        f_all = b*(wave/3.0e3)**a1
+    return f_all
 
 # Return LaTeX name for a line / complex name
 def texlinename(name) -> str:

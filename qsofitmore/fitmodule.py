@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-# from mmap import MAP_ANONYMOUS
 # from os import name
-# from re import T
 import sys
 import glob
 import matplotlib
@@ -14,7 +12,7 @@ from kapteyn import kmpfit
 from PyAstronomy import pyasl
 from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
-from astropy.modeling.blackbody import blackbody_lambda
+# from astropy.modeling.blackbody import blackbody_lambda
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -23,6 +21,13 @@ from .extinction import *
 from .auxmodule import *
 import pkg_resources
 import pandas as pd
+import astropy
+from packaging import version
+if version.parse(astropy.__version__) < version.parse("4.3.0"):
+    from astropy.modeling.blackbody import blackbody_lambda
+else:
+    from astropy.modeling.models import BlackBody
+
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 dustmap_path = pkg_resources.resource_filename('PyQSOFit', '/sfddata/')
@@ -602,6 +607,24 @@ class QSOFitNew(QSOFit):
         return yval
 
 
+    def Balmer_conti(self, xval, pp):
+        """Fit the Balmer continuum from the model of Dietrich+02"""
+        # xval = input wavelength, in units of A
+        # pp=[norm, Te, tau_BE] -- in units of [--, K, --]
+        
+        lambda_BE = 3646.  # A
+        if version.parse(astropy.__version__) < version.parse("4.3.0"):
+            bbflux = blackbody_lambda(xval, pp[1]).value*3.14  # in units of ergs/cm2/s/A
+        else:
+            bb_lam = BlackBody(pp[1] * u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
+            bbflux = bbflux = bb_lam(xval).value*3.14
+        tau = pp[2]*(xval/lambda_BE)**3
+        result = pp[0]*bbflux*(1.-np.exp(-tau))
+        ind = np.where(xval > lambda_BE, True, False)
+        if ind.any() == True:
+            result[ind] = 0.
+        return result
+
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
             broken_pl=False, Fe_uv_op=True,
@@ -1074,3 +1097,86 @@ class QSOFitNew(QSOFit):
                     na_line_result.update({err_name_tmp:err_tmp})
         self.na_line_result = na_line_result
 
+
+    # -----line properties calculation function--------
+    def line_prop(self, compcenter, pp, linetype):
+        """
+        Calculate the further results for the broad component in emission lines, e.g., FWHM, sigma, peak, line flux
+        The compcenter is the theortical vacuum wavelength for the broad compoenet.
+        """
+        pp = pp.astype(float)
+        if linetype == 'broad':
+            ind_br = np.repeat(np.where(pp[2::3] > 0.0017, True, False), 3)
+        
+        elif linetype == 'narrow':
+            ind_br = np.repeat(np.where(pp[2::3] <= 0.0017, True, False), 3)
+        
+        else:
+            raise RuntimeError("line type should be 'broad' or 'narrow'!")
+        
+        ind_br[9:] = False  # to exclude the broad OIII and broad He II
+        
+        p = pp[ind_br]
+        del pp
+        pp = p
+        
+        c = 299792.458  # km/s
+        n_gauss = int(len(pp)/3)
+        if n_gauss == 0:
+            fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
+        else:
+            cen = np.zeros(n_gauss)
+            sig = np.zeros(n_gauss)
+            
+            for i in range(n_gauss):
+                cen[i] = pp[3*i+1]
+                sig[i] = pp[3*i+2]
+            
+            # print cen,sig,area
+            left = min(cen-3*sig)
+            right = max(cen+3*sig)
+            disp = 1.e-4*np.log(10.)
+            npix = int((right-left)/disp)
+            
+            xx = np.linspace(left, right, npix)
+            yy = self.Manygauss(xx, pp)
+        
+            # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
+            contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
+                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
+            if self.broken_pl == True:
+                f = interpolate.interp1d(self.wave, self.f_conti_model)
+                contiflux = f(np.exp(xx))
+            
+            # find the line peak location
+            ypeak = yy.max()
+            ypeak_ind = np.argmax(yy)
+            peak = np.exp(xx[ypeak_ind])
+            
+            # find the FWHM in km/s
+            # take the broad line we focus and ignore other broad components such as [OIII], HeII
+            
+            if n_gauss > 3:
+                spline = interpolate.UnivariateSpline(xx,
+                                                      self.Manygauss(xx, pp[0:9])-np.max(self.Manygauss(xx, pp[0:9]))/2,
+                                                      s=0)
+            else:
+                spline = interpolate.UnivariateSpline(xx, yy-np.max(yy)/2, s=0)
+            if len(spline.roots()) > 0:
+                fwhm_left, fwhm_right = spline.roots().min(), spline.roots().max()
+                fwhm = abs(np.exp(fwhm_left)-np.exp(fwhm_right))/compcenter*c
+                
+                # calculate the line sigma and EW in normal wavelength
+                line_flux = self.Manygauss(xx, pp)
+                line_wave = np.exp(xx)
+                lambda0 = integrate.trapz(line_flux, line_wave)  # calculate the total broad line flux
+                lambda1 = integrate.trapz(line_flux*line_wave, line_wave)
+                lambda2 = integrate.trapz(line_flux*line_wave*line_wave, line_wave)
+                ew = integrate.trapz(np.abs(line_flux/contiflux), line_wave)
+                area = lambda0
+                
+                sigma = np.sqrt(lambda2/lambda0-(lambda1/lambda0)**2)/compcenter*c
+            else:
+                fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
+        
+        return fwhm, sigma, ew, peak, area
