@@ -1,0 +1,11 @@
+@software{fu_2021_qsofitmore,
+  author       = {Yuming Fu},
+  title        = {{QSOFITMORE: a python package for fitting UV- 
+                   optical spectra of quasars}},
+  month        = jun,
+  year         = 2021,
+  publisher    = {Zenodo},
+  version      = {v1.0.0},
+  doi          = {10.5281/zenodo.4893734},
+  url          = {https://doi.org/10.5281/zenodo.4893734}
+}
