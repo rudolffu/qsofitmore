@@ -1145,7 +1145,9 @@ class QSOFitNew(QSOFit):
             contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
                 np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
             if self.broken_pl == True:
-                f = interpolate.interp1d(self.wave, self.f_conti_model)
+                f = interpolate.InterpolatedUnivariateSpline(
+                    self.wave, 
+                    self.f_conti_model)
                 contiflux = f(np.exp(xx))
             
             # find the line peak location
