@@ -153,22 +153,22 @@ class QSOFitNew(QSOFit):
         CRVAL1 = float(header['CRVAL1'])
         CD1_1 = float(header['CD1_1'])
         CRPIX1 = float(header['CRPIX1'])
+        W1 = (1-CRPIX1) * CD1_1 + CRVAL1
         data = hdu[0].data
         dim = len(data.shape)
         if dim==1:
-            l = len(data)
-            wave = np.linspace(CRVAL1, 
-                               CRVAL1 + (l - CRPIX1) * CD1_1, 
-                               l)
+            num_pt = len(data)
+            wave = np.linspace(W1, 
+                               W1 + (num_pt - 1) * CD1_1, 
+                               num=num_pt)
             wave = wave.flatten()
             flux = data.flatten()
             err = None
         elif dim==3:
-            l = data.shape[2]
-            print(repr(l))
-            wave = np.linspace(CRVAL1, 
-                               CRVAL1 + (l - CRPIX1) * CD1_1, 
-                               l)
+            num_pt = data.shape[2]
+            wave = np.linspace(W1, 
+                               W1 + (num_pt - 1) * CD1_1, 
+                               num=num_pt)
             flux = data[0,0,:]
             err = data[3,0,:]
         else:
@@ -247,11 +247,12 @@ class QSOFitNew(QSOFit):
         except:
             CD1_1 = float(header['CDELT1'])
         CRPIX1 = float(header['CRPIX1'])
+        W1 = (1-CRPIX1) * CD1_1 + CRVAL1
         data = hdu[0].data
-        l = len(data)
-        wave = np.linspace(CRVAL1, 
-                           CRVAL1 + (l - CRPIX1) * CD1_1, 
-                           l)
+        num_pt = len(data)
+        wave = np.linspace(W1, 
+                           W1 + (num_pt - 1) * CD1_1, 
+                           num=num_pt)
         flux = data
         err = hdu[1].data
         hdu.close() 
