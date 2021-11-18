@@ -153,22 +153,22 @@ class QSOFitNew(QSOFit):
         CRVAL1 = float(header['CRVAL1'])
         CD1_1 = float(header['CD1_1'])
         CRPIX1 = float(header['CRPIX1'])
+        W1 = (1-CRPIX1) * CD1_1 + CRVAL1
         data = hdu[0].data
         dim = len(data.shape)
         if dim==1:
-            l = len(data)
-            wave = np.linspace(CRVAL1, 
-                               CRVAL1 + (l - CRPIX1) * CD1_1, 
-                               l)
+            num_pt = len(data)
+            wave = np.linspace(W1, 
+                               W1 + (num_pt - 1) * CD1_1, 
+                               num=num_pt)
             wave = wave.flatten()
             flux = data.flatten()
             err = None
         elif dim==3:
-            l = data.shape[2]
-            print(repr(l))
-            wave = np.linspace(CRVAL1, 
-                               CRVAL1 + (l - CRPIX1) * CD1_1, 
-                               l)
+            num_pt = data.shape[2]
+            wave = np.linspace(W1, 
+                               W1 + (num_pt - 1) * CD1_1, 
+                               num=num_pt)
             flux = data[0,0,:]
             err = data[3,0,:]
         else:
@@ -247,11 +247,12 @@ class QSOFitNew(QSOFit):
         except:
             CD1_1 = float(header['CDELT1'])
         CRPIX1 = float(header['CRPIX1'])
+        W1 = (1-CRPIX1) * CD1_1 + CRVAL1
         data = hdu[0].data
-        l = len(data)
-        wave = np.linspace(CRVAL1, 
-                           CRVAL1 + (l - CRPIX1) * CD1_1, 
-                           l)
+        num_pt = len(data)
+        wave = np.linspace(W1, 
+                           W1 + (num_pt - 1) * CD1_1, 
+                           num=num_pt)
         flux = data
         err = hdu[1].data
         hdu.close() 
@@ -1159,7 +1160,9 @@ class QSOFitNew(QSOFit):
             contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
                 np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
             if self.broken_pl == True:
-                f = interpolate.interp1d(self.wave, self.f_conti_model)
+                f = interpolate.InterpolatedUnivariateSpline(
+                    self.wave, 
+                    self.f_conti_model)
                 contiflux = f(np.exp(xx))
             
             # find the line peak location
