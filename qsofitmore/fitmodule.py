@@ -273,7 +273,7 @@ class QSOFitNew(QSOFit):
     def _DeRedden(self, lam, flux, err, ra, dec, dustmap_path):
         """Correct the Galactic extinction"""
         try:
-            print("The dust map is {}".format(self.mapname))
+            print("The dust map is {}.".format(self.mapname))
         except AttributeError:
             print('`mapname` for extinction not set.\nSetting `mapname` to `sfd`.')
             mapname = 'sfd'
@@ -658,6 +658,18 @@ class QSOFitNew(QSOFit):
                            save_fits_name=save_fits_name)
 
 
+    def _SaveResult(self, conti_result, conti_result_type, conti_result_name, line_result, line_result_type,
+                    line_result_name, save_fits_path, save_fits_name):
+        """Save all data to fits"""
+        self.all_result = np.concatenate([conti_result, line_result])
+        self.all_result_type = np.concatenate([conti_result_type, line_result_type])
+        self.all_result_name = np.concatenate([conti_result_name, line_result_name])
+        all_result = self.all_result.astype(float)
+        t = Table(all_result, names=(self.all_result_name), dtype=self.all_result_type)
+        self.result_table = t
+        t.write(save_fits_path+save_fits_name+'.fits', format='fits', overwrite=True)
+
+
     def _PlotFig(self, ra, dec, z, wave, flux, err, decomposition_host, linefit, tmp_all, gauss_result, f_conti_model,
                  conti_fit, all_comp_range, uniq_linecomp_sort, line_flux, save_fig_path):
         """Plot the results"""
@@ -854,7 +866,9 @@ class QSOFitNew(QSOFit):
                 
                 # get the pixel index in complex region and remove negtive abs in line region
                 ind_n = np.where((wave > comp_range[0]) & (wave < comp_range[1]) & (ind_neg_line == True), True, False)
-                
+                num_good_pix = np.sum(ind_n)
+                comp_name = linelist['compname'][ind_line][0]
+                print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
                 if np.sum(ind_n) > 10:
                     # call kmpfit for lines
                     
@@ -883,13 +897,13 @@ class QSOFitNew(QSOFit):
                         dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
                     
                     comp_result_tmp = np.array(
-                        [[linelist['compname'][ind_line][0]], [line_fit.status], [line_fit.chi2_min],
+                        [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
                          [line_fit.dof+dof_fix]]).flatten()
-                    comp_result_type_tmp = np.array(['str', 'int', 'float', 'float', 'int', 'int'])
+                    comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int'])
                     comp_result_name_tmp = np.array(
-                        [str(ii+1)+'_complex_name', str(ii+1)+'_line_status', str(ii+1)+'_line_min_chi2',
-                         str(ii+1)+'_line_red_chi2', str(ii+1)+'_niter', str(ii+1)+'_ndof'])
+                        [comp_name+'_ngoodpix', comp_name+'_line_status', comp_name+'_line_min_chi2',
+                         comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof'])
                     comp_result = np.concatenate([comp_result, comp_result_tmp])
                     comp_result_name = np.concatenate([comp_result_name, comp_result_name_tmp])
                     comp_result_type = np.concatenate([comp_result_type, comp_result_type_tmp])
