@@ -869,7 +869,7 @@ class QSOFitNew(QSOFit):
                 ind_n = np.where((wave > comp_range[0]) & (wave < comp_range[1]) & (ind_neg_line == True), True, False)
                 num_good_pix = np.sum(ind_n)
                 comp_name = linelist['compname'][ind_line][0]
-                print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
+                # print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
                 if np.sum(ind_n) > 10:
                     # call kmpfit for lines
                     
