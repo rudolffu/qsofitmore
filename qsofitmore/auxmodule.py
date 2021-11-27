@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 from math import log
+from os import stat
 from astropy import units as u
 from astropy.coordinates import SkyCoord
 from astropy.cosmology import FlatLambdaCDM
@@ -123,3 +124,23 @@ mbh_civ_df = lambda x: mbh_civ(
     x['CIV_whole_br_fwhm_err'],
     x['L1350'],
     x['L1350_err'])
+
+
+def check_wings(na_dict):
+    wings = ['OIII4959w', 'OIII5007w']
+    lines = ['OIII4959', 'OIII5007']
+    wing_status = []
+    for i in range(len(wings)):
+        wing = wings[i]
+        line = lines[i]
+        if wing in na_dict.keys():
+            if na_dict[wing]['ew'].size == 0:
+                status_temp = False
+            elif na_dict[wing]['ew']/na_dict[line]['ew']>3:
+                status_temp = False
+            else:
+                status_temp = True
+        else:
+            status_temp = None
+        wing_status.append(status_temp)
+    return wing_status
