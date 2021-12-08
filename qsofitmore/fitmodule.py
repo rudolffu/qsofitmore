@@ -1102,7 +1102,8 @@ class QSOFitNew(QSOFit):
         all_peak = np.zeros(n_trails)
         all_area = np.zeros(n_trails)
         na_all_dict = {}
-        # emp_dict = {'fwhm': [],'sigma' : [],'ew' : [],'peak' : [],'area' : []}
+        if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
+            linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])  
         for line in linenames: 
             if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                 emp_dict = {'fwhm': [],
@@ -1111,11 +1112,6 @@ class QSOFitNew(QSOFit):
                             'peak' : [],
                             'area' : []}
                 na_all_dict.setdefault(line, emp_dict)
-        if 'OIII4959' in linenames and 'OIII5007' in linenames:
-            emp_dict = {'fwhm': [], 'sigma' : [],
-                        'ew' : [], 'peak' : [], 'area' : []}
-            na_all_dict.setdefault('OIII4959_whole', emp_dict)
-            na_all_dict.setdefault('OIII5007_whole', emp_dict)
 
         for tra in range(n_trails):
             flux = y+np.random.randn(len(y))*err
@@ -1141,7 +1137,7 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1152,32 +1148,23 @@ class QSOFitNew(QSOFit):
                         na_all_dict[line]['peak'].append(na_tmp[3])
                         na_all_dict[line]['area'].append(na_tmp[4])
                     except:
-                        print('Mismatch.')
+                        print('Line {} parameters mismatch.'.format(line))
                         pass
-            if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
-                par_ind1 = np.where(all_line_name=='OIII4959')[0][0]*3
-                par_ind2 = np.where(all_line_name=='OIII4959w')[0][0]*3
-                par_ind3 = np.where(all_line_name=='OIII5007')[0][0]*3
-                par_ind4 = np.where(all_line_name=='OIII5007w')[0][0]*3
-                inds1 = np.concatenate(
-                    [np.arange(par_ind1, par_ind1+3),
-                     np.arange(par_ind2, par_ind2+3)])
-                inds2 = np.concatenate(
-                    [np.arange(par_ind3, par_ind3+3),
-                     np.arange(par_ind4, par_ind4+3)])
-                linecenter1 = np.float(linelist[linelist['linename']=='OIII4959']['lambda'][0])
-                linecenter2 = np.float(linelist[linelist['linename']=='OIII5007']['lambda'][0])
-                na_tmp1 = self.comb_line_prop(linecenter1, line_fit.params[inds1])
-                na_tmp2 = self.comb_line_prop(linecenter2, line_fit.params[inds2])
-                na_tmp = [na_tmp1, na_tmp2]
-                for i, comp_tmp in enumerate(['OIII4959_whole', 'OIII5007_whole']):
-                    na_all_dict[comp_tmp]['fwhm'].append(na_tmp[i][0])
-                    na_all_dict[comp_tmp]['sigma'].append(na_tmp[i][1])
-                    na_all_dict[comp_tmp]['ew'].append(na_tmp[i][2])
-                    na_all_dict[comp_tmp]['peak'].append(na_tmp[i][3])
-                    na_all_dict[comp_tmp]['area'].append(na_tmp[i][4])
-        if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
-            linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])            
+                elif 'whole' in line:
+                    linec = line.split('_')[0]
+                    linew = linec+'w'
+                    # print('Line: {}. Core: {}. Wing: {}.'.format(line, linec, linew))
+                    par_ind1 = np.where(all_line_name==linec)[0][0]*3
+                    par_ind2 = np.where(all_line_name==linew)[0][0]*3
+                    inds1 = np.concatenate([np.arange(par_ind1, par_ind1+3),
+                                            np.arange(par_ind2, par_ind2+3)])
+                    linecenter = np.float(linelist[linelist['linename']==linec]['lambda'][0])
+                    na_tmp = self.comb_line_prop(linecenter, line_fit.params[inds1])
+                    na_all_dict[line]['fwhm'].append(na_tmp[0])
+                    na_all_dict[line]['sigma'].append(na_tmp[1])
+                    na_all_dict[line]['ew'].append(na_tmp[2])
+                    na_all_dict[line]['peak'].append(na_tmp[3])
+                    na_all_dict[line]['area'].append(na_tmp[4])          
         for line in linenames: 
             if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
