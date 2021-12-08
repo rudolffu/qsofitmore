@@ -964,7 +964,10 @@ class QSOFitNew(QSOFit):
                     fur_result_tmp = np.array([])
                     fur_result_type_tmp = np.array([])
                     fur_result_name_tmp = np.array([])
-                    fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
+                    if comp_name == 'CIV':
+                        fwhm, sigma, ew, peak, area = self.comb_line_prop(compcenter, line_fit.params)
+                    else:
+                        fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
                     br_name = uniq_linecomp_sort[ii]
                     
                     if self.MC == True and self.n_trails > 0:
@@ -1117,7 +1120,10 @@ class QSOFitNew(QSOFit):
             
             # further line properties
             all_fwhm[tra], all_sigma[tra], all_ew[tra], all_peak[tra], all_area[tra] 
-            broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
+            if linecompname == 'CIV':
+                broad_all = self.comb_line_prop(compcenter, line_fit.params)
+            else:
+                broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
             all_fwhm[tra] = broad_all[0]
             all_sigma[tra] =  broad_all[1]
             all_ew[tra] = broad_all[2]
