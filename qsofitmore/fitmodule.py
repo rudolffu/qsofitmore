@@ -2,6 +2,7 @@
 # from os import name
 import sys
 import glob
+import warnings
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -714,7 +715,7 @@ class QSOFitNew(QSOFit):
                 lines_total += line_single
             
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
-                    zorder=6)  # supplement the emission lines in the firs subplot
+                    zorder=6)  # supplement the emission lines in the first subplot
             for c in range(self.ncomp):
                 tname = texlinename(uniq_linecomp_sort[c])
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
@@ -874,12 +875,33 @@ class QSOFitNew(QSOFit):
                     # call kmpfit for lines
                     
                     line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
-                    
+                    if comp_name == 'Hb':
+                        na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
+                        wing_status = check_wings(na_dict)
+                        if np.sum(wing_status)<2:
+                            linelist = linelist[linelist['linename']!='OIII4959w']
+                            linelist = linelist[linelist['linename']!='OIII5007w']
+                            self.linelist = linelist
+                            ind_kind_line = np.where((linelist['lambda'] > wave.min()) & (linelist['lambda'] < wave.max()), True, False)
+                            uniq_linecomp, uniq_ind = np.unique(linelist['compname'][ind_kind_line], return_index=True)
+                            uniq_linecomp_sort = uniq_linecomp[linelist['lambda'][ind_kind_line][uniq_ind].argsort()]
+                            ind_line = np.where(linelist['compname'] == uniq_linecomp_sort[ii], True, False) 
+                            linecompname = uniq_linecomp_sort[ii]
+                            nline_fit = np.sum(ind_line)  # n line in one complex
+                            linelist_fit = linelist[ind_line]
+                            ngauss_fit = np.asarray(linelist_fit['ngauss'], dtype=int)
+                            self._do_tie_line(linelist, ind_line)
+                            line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
+                   
                     # calculate MC err
                     if self.MC == True and self.n_trails > 0:
                         all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
                             np.log(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
                             self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
+                        self.na_all_dict.update(na_dict)
+                    else:
+                        na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, 
+                                  nline_fit, ngauss_fit)
                         self.na_all_dict.update(na_dict)
                     
                     # ----------------------get line fitting results----------------------
@@ -991,14 +1013,14 @@ class QSOFitNew(QSOFit):
         self.comp_result = comp_result
         self.gauss_result = gauss_result
         self.gauss_result_name = gauss_result_name
-        if self.MC == True and self.na_all_dict:
-            self.cal_na_line_res()
-            na_line_result = np.array(list(self.na_line_result.values()))
-            na_line_result_type = np.full_like(na_line_result,'float',dtype=object)
-            na_line_result_name = np.asarray(list(self.na_line_result.keys()))
-            line_result = np.concatenate([line_result, na_line_result])
-            line_result_type = np.concatenate([line_result_type, na_line_result_type])
-            line_result_name = np.concatenate([line_result_name, na_line_result_name])
+        # if self.MC == True and self.na_all_dict:
+        self.cal_na_line_res()
+        na_line_result = np.array(list(self.na_line_result.values()))
+        na_line_result_type = np.full_like(na_line_result,'float',dtype=object)
+        na_line_result_name = np.asarray(list(self.na_line_result.keys()))
+        line_result = np.concatenate([line_result, na_line_result])
+        line_result_type = np.concatenate([line_result_type, na_line_result_type])
+        line_result_name = np.concatenate([line_result_name, na_line_result_name])
         self.line_result = line_result
         self.line_result_type = line_result_type
         self.line_result_name = line_result_name
@@ -1009,12 +1031,63 @@ class QSOFitNew(QSOFit):
         return self.line_result, self.line_result_name
 
 
+    def na_line_nomc(self, line_fit, linecompname,
+                    ind_line, nline_fit, ngauss_fit):
+        linelist = self.linelist
+        linenames = linelist[linelist['compname']==linecompname]['linename']
+        na_all_dict = {}
+        for line in linenames: 
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                emp_dict = {'fwhm': [],
+                            'sigma' : [],
+                            'ew' : [],
+                            'peak' : [],
+                            'area' : []}
+                na_all_dict.setdefault(line, emp_dict)  
+        all_line_name = []
+        for n in range(nline_fit):
+            for nn in range(int(ngauss_fit[n])):
+                line_name = linelist['linename'][ind_line][n]
+                all_line_name.append(line_name)
+                # print('Line {} Gaussian component {} added.'.format(line_name, nn+1))
+        all_line_name = np.asarray(all_line_name)
+        # print('All line names: {}'.format(all_line_name))
+
+        for line in linenames: 
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                try:
+                    par_ind = np.where(all_line_name==line)[0][0]*3
+                    linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
+                    na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
+                    if na_tmp[0] == 0:
+                        na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
+                    na_all_dict[line]['fwhm'].append(na_tmp[0])
+                    na_all_dict[line]['sigma'].append(na_tmp[1])
+                    na_all_dict[line]['ew'].append(na_tmp[2])
+                    na_all_dict[line]['peak'].append(na_tmp[3])
+                    na_all_dict[line]['area'].append(na_tmp[4])
+                except:
+                    print('Mismatch.')
+                    pass
+                    
+        for line in linenames: 
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
+                na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
+                na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
+                na_all_dict[line]['peak'] = getnonzeroarr(np.asarray(na_all_dict[line]['peak']))
+                na_all_dict[line]['area'] = getnonzeroarr(np.asarray(na_all_dict[line]['area']))
+        
+        return na_all_dict
+
+
     # ---------MC error for emission line parameters-------------------
     def new_line_mc(self, x, y, err, pp0, pp_limits, n_trails, compcenter, linecompname,
                     ind_line, nline_fit, linelist_fit, ngauss_fit):
         """calculate the Monte Carlo errror of line parameters"""
         linelist = self.linelist
         linenames = linelist[linelist['compname']==linecompname]['linename']
+        self.linenames_mc = linenames
         all_para_1comp = np.zeros(len(pp0)*n_trails).reshape(len(pp0), n_trails)
         all_para_std = np.zeros(len(pp0))
         all_fwhm = np.zeros(n_trails)
@@ -1023,6 +1096,8 @@ class QSOFitNew(QSOFit):
         all_peak = np.zeros(n_trails)
         all_area = np.zeros(n_trails)
         na_all_dict = {}
+        if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
+            linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])  
         for line in linenames: 
             if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                 emp_dict = {'fwhm': [],
@@ -1056,7 +1131,7 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1067,9 +1142,23 @@ class QSOFitNew(QSOFit):
                         na_all_dict[line]['peak'].append(na_tmp[3])
                         na_all_dict[line]['area'].append(na_tmp[4])
                     except:
-                        print('Mismatch.')
+                        print('Line {} parameters mismatch.'.format(line))
                         pass
-                    
+                elif 'whole' in line:
+                    linec = line.split('_')[0]
+                    linew = linec+'w'
+                    # print('Line: {}. Core: {}. Wing: {}.'.format(line, linec, linew))
+                    par_ind1 = np.where(all_line_name==linec)[0][0]*3
+                    par_ind2 = np.where(all_line_name==linew)[0][0]*3
+                    inds1 = np.concatenate([np.arange(par_ind1, par_ind1+3),
+                                            np.arange(par_ind2, par_ind2+3)])
+                    linecenter = np.float(linelist[linelist['linename']==linec]['lambda'][0])
+                    na_tmp = self.comb_line_prop(linecenter, line_fit.params[inds1])
+                    na_all_dict[line]['fwhm'].append(na_tmp[0])
+                    na_all_dict[line]['sigma'].append(na_tmp[1])
+                    na_all_dict[line]['ew'].append(na_tmp[2])
+                    na_all_dict[line]['peak'].append(na_tmp[3])
+                    na_all_dict[line]['area'].append(na_tmp[4])          
         for line in linenames: 
             if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
@@ -1077,7 +1166,6 @@ class QSOFitNew(QSOFit):
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
                 na_all_dict[line]['peak'] = getnonzeroarr(np.asarray(na_all_dict[line]['peak']))
                 na_all_dict[line]['area'] = getnonzeroarr(np.asarray(na_all_dict[line]['area']))
-       
         for st in range(len(pp0)):
             all_para_std[st] = all_para_1comp[st, :].std()
         
@@ -1090,9 +1178,16 @@ class QSOFitNew(QSOFit):
         df_gauss = pd.DataFrame(data=np.array([self.gauss_result]),
                                 columns=self.gauss_result_name)
         #caution: dtypes are all object for df_gauss, conversion needed.
+        keys = list(self.na_all_dict.keys())
+        try:
+            keys.remove('OIII4959_whole')
+            keys.remove('OIII5007_whole')
+        except:
+            pass
+        print(repr(keys))
         if self.MC == True and self.na_all_dict:
-            for line in self.na_all_dict.keys():
-                linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
+            for line in keys:
+                linecenter = np.float(linelist[linelist['linename']==line]['lambda'].item())
                 line_scale = np.float(df_gauss[line+'_1_scale'])
                 line_centerwave = np.float(df_gauss[line+'_1_centerwave'])
                 line_sigma = np.float(df_gauss[line+'_1_sigma'])
@@ -1110,6 +1205,42 @@ class QSOFitNew(QSOFit):
                         err_tmp = 0.0
                     na_line_result.update({res_name_tmp:res_tmp})
                     na_line_result.update({err_name_tmp:err_tmp})
+            if 'OIII4959_whole' in self.na_all_dict.keys() and 'OIII5007_whole' in self.na_all_dict.keys():
+                for i, comp_tmp in enumerate(['OIII4959_whole', 'OIII5007_whole']):
+                    linec = comp_tmp.split('_')[0]
+                    linew = linec+'w'
+                    linecenter = np.float(linelist[linelist['linename']==linec]['lambda'].item())
+                    line_scale1 = np.float(df_gauss[linec+'_1_scale'])
+                    line_centerwave1 = np.float(df_gauss[linec+'_1_centerwave'])
+                    line_sigma1 = np.float(df_gauss[linec+'_1_sigma'])
+                    line_scale2 = np.float(df_gauss[linew+'_1_scale'])
+                    line_centerwave2 = np.float(df_gauss[linew+'_1_centerwave'])
+                    line_sigma2 = np.float(df_gauss[linew+'_1_sigma'])
+                    line_param = np.array([line_scale1,line_centerwave1,line_sigma1,
+                                           line_scale2,line_centerwave2,line_sigma2])
+                    na_tmp = self.comb_line_prop(linecenter, line_param)
+                    par_list = list(self.na_all_dict[comp_tmp].keys())
+                    for ii in range(len(par_list)):
+                        par = par_list[ii]
+                        res_name_tmp = comp_tmp+'_'+par
+                        res_tmp = na_tmp[ii]
+                        err_name_tmp = comp_tmp+'_'+par+'_err'
+                        err_tmp = self.na_all_dict[comp_tmp][par].std()
+                        if res_tmp == 0:
+                            res_tmp = 0.0
+                            err_tmp = 0.0
+                        na_line_result.update({res_name_tmp:res_tmp})
+                        na_line_result.update({err_name_tmp:err_tmp})
+        elif self.MC == False and self.na_all_dict:
+            for line in self.na_all_dict.keys():
+                par_list = list(self.na_all_dict[line].keys())
+                for i in range(len(par_list)):
+                    par = par_list[i]
+                    res_name_tmp = line+'_'+par
+                    res_tmp = self.na_all_dict[line][par][0]
+                    if res_tmp == 0:
+                        res_tmp = 0.0
+                    na_line_result.update({res_name_tmp:res_tmp})
         self.na_line_result = na_line_result
 
 
@@ -1129,6 +1260,83 @@ class QSOFitNew(QSOFit):
         else:
             raise RuntimeError("line type should be 'broad' or 'narrow'!")
         
+        ind_br[9:] = False  # to exclude the broad OIII and broad He II
+        
+        p = pp[ind_br]
+        del pp
+        pp = p
+        
+        c = 299792.458  # km/s
+        n_gauss = int(len(pp)/3)
+        if n_gauss == 0:
+            fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
+        else:
+            cen = np.zeros(n_gauss)
+            sig = np.zeros(n_gauss)
+            
+            for i in range(n_gauss):
+                cen[i] = pp[3*i+1]
+                sig[i] = pp[3*i+2]
+            
+            # print cen,sig,area
+            left = min(cen-3*sig)
+            right = max(cen+3*sig)
+            disp = 1.e-4*np.log(10.)
+            npix = int((right-left)/disp)
+            
+            xx = np.linspace(left, right, npix)
+            yy = self.Manygauss(xx, pp)
+        
+            # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
+            contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
+                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
+            if self.broken_pl == True:
+                f = interpolate.InterpolatedUnivariateSpline(
+                    self.wave, 
+                    self.f_conti_model)
+                contiflux = f(np.exp(xx))
+            
+            # find the line peak location
+            ypeak = yy.max()
+            ypeak_ind = np.argmax(yy)
+            peak = np.exp(xx[ypeak_ind])
+            
+            # find the FWHM in km/s
+            # take the broad line we focus and ignore other broad components such as [OIII], HeII
+            
+            if n_gauss > 3:
+                spline = interpolate.UnivariateSpline(xx,
+                                                      self.Manygauss(xx, pp[0:9])-np.max(self.Manygauss(xx, pp[0:9]))/2,
+                                                      s=0)
+            else:
+                spline = interpolate.UnivariateSpline(xx, yy-np.max(yy)/2, s=0)
+            if len(spline.roots()) > 0:
+                fwhm_left, fwhm_right = spline.roots().min(), spline.roots().max()
+                fwhm = abs(np.exp(fwhm_left)-np.exp(fwhm_right))/compcenter*c
+                
+                # calculate the line sigma and EW in normal wavelength
+                line_flux = self.Manygauss(xx, pp)
+                line_wave = np.exp(xx)
+                lambda0 = integrate.trapz(line_flux, line_wave)  # calculate the total broad line flux
+                lambda1 = integrate.trapz(line_flux*line_wave, line_wave)
+                lambda2 = integrate.trapz(line_flux*line_wave*line_wave, line_wave)
+                ew = integrate.trapz(np.abs(line_flux/contiflux), line_wave)
+                area = lambda0
+                
+                sigma = np.sqrt(lambda2/lambda0-(lambda1/lambda0)**2)/compcenter*c
+            else:
+                fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
+        
+        return fwhm, sigma, ew, peak, area
+
+
+    def comb_line_prop(self, compcenter, pp):
+        """
+        Calculate the further results for a combined component of emission lines, e.g., FWHM, sigma, peak, line flux.
+        The compcenter is the theortical vacuum wavelength for the broad compoenet.
+        """
+        pp = pp.astype(float)
+        ind_br = np.repeat(np.where(pp[2::3] > 0., True, False), 3)
         ind_br[9:] = False  # to exclude the broad OIII and broad He II
         
         p = pp[ind_br]
