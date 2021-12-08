@@ -878,12 +878,6 @@ class QSOFitNew(QSOFit):
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
                         wing_status = check_wings(na_dict)
-                        # if wing_status[0] == False:
-                        #     linelist = linelist[linelist['linename']!='OIII4959w']
-                        #     self.linelist = linelist
-                        # if wing_status[1] == False:
-                        #     linelist = linelist[linelist['linename']!='OIII5007w']
-                        #     self.linelist = linelist
                         if np.sum(wing_status)<2:
                             linelist = linelist[linelist['linename']!='OIII4959w']
                             linelist = linelist[linelist['linename']!='OIII5007w']
@@ -1172,7 +1166,6 @@ class QSOFitNew(QSOFit):
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
                 na_all_dict[line]['peak'] = getnonzeroarr(np.asarray(na_all_dict[line]['peak']))
                 na_all_dict[line]['area'] = getnonzeroarr(np.asarray(na_all_dict[line]['area']))
-       
         for st in range(len(pp0)):
             all_para_std[st] = all_para_1comp[st, :].std()
         
