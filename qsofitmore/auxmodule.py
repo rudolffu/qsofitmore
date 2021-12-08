@@ -136,7 +136,7 @@ def check_wings(na_dict):
         if wing in na_dict.keys():
             if na_dict[wing]['ew'].size == 0:
                 status_temp = False
-            elif na_dict[wing]['ew']/na_dict[line]['ew']>2:
+            elif na_dict[wing]['ew']/na_dict[line]['ew']>3:
                 status_temp = False
             else:
                 status_temp = True
