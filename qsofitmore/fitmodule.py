@@ -878,7 +878,9 @@ class QSOFitNew(QSOFit):
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
                         wing_status = check_wings(na_dict)
-                        if np.sum(wing_status)<2:
+                        if None in wing_status:
+                            pass
+                        elif np.sum(wing_status)<2:
                             linelist = linelist[linelist['linename']!='OIII4959w']
                             linelist = linelist[linelist['linename']!='OIII5007w']
                             self.linelist = linelist
