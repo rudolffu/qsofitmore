@@ -1053,7 +1053,8 @@ class QSOFitNew(QSOFit):
         linenames = linelist[linelist['compname']==linecompname]['linename']
         na_all_dict = {}
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if 'br' not in line:
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -1070,7 +1071,8 @@ class QSOFitNew(QSOFit):
         # print('All line names: {}'.format(all_line_name))
 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV' in line):
+            if 'br' not in line:
                 try:
                     par_ind = np.where(all_line_name==line)[0][0]*3
                     linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1087,7 +1089,8 @@ class QSOFitNew(QSOFit):
                     pass
                     
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
+            if 'br' not in line:    
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1117,7 +1120,8 @@ class QSOFitNew(QSOFit):
         if 'CIV_br' in linenames and 'CIV_na' in linenames:
             linenames = np.append(linenames, ['CIV_whole'])  
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            if 'br' not in line:
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -1185,7 +1189,8 @@ class QSOFitNew(QSOFit):
                     na_all_dict[line]['peak'].append(all_civ[3])
                     na_all_dict[line]['area'].append(all_civ[4]) 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            if 'br' not in line:
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1215,6 +1220,19 @@ class QSOFitNew(QSOFit):
             pass
         print(repr(keys))
         if self.MC == True and self.na_all_dict:
+            if 'CIV_whole' in self.na_all_dict.keys():
+                par_list = list(self.na_all_dict['CIV_whole'].keys())
+                for ii in range(len(par_list)):
+                    par = par_list[ii]
+                    # res_name_tmp = comp_tmp+'_'+par
+                    # res_tmp = na_tmp[ii]
+                    err_name_tmp = 'CIV_whole_'+par+'_err'
+                    err_tmp = self.na_all_dict['CIV_whole'][par].std()
+                    if err_tmp == 0:
+                        # res_tmp = 0.0
+                        err_tmp = 0.0
+                    # na_line_result.update({res_name_tmp:res_tmp})
+                    na_line_result.update({err_name_tmp:err_tmp})
             for line in keys:
                 linecenter = np.float(linelist[linelist['linename']==line]['lambda'].item())
                 line_scale = np.float(df_gauss[line+'_1_scale'])
@@ -1260,19 +1278,6 @@ class QSOFitNew(QSOFit):
                             err_tmp = 0.0
                         na_line_result.update({res_name_tmp:res_tmp})
                         na_line_result.update({err_name_tmp:err_tmp})
-            if 'CIV_whole' in self.na_all_dict.keys():
-                par_list = list(self.na_all_dict['CIV_whole'].keys())
-                for ii in range(len(par_list)):
-                    par = par_list[ii]
-                    # res_name_tmp = comp_tmp+'_'+par
-                    # res_tmp = na_tmp[ii]
-                    err_name_tmp = 'CIV_whole_'+par+'_err'
-                    err_tmp = self.na_all_dict['CIV_whole'][par].std()
-                    if err_tmp == 0:
-                        # res_tmp = 0.0
-                        err_tmp = 0.0
-                    # na_line_result.update({res_name_tmp:res_tmp})
-                    na_line_result.update({err_name_tmp:err_tmp})
         elif self.MC == False and self.na_all_dict:
             for line in self.na_all_dict.keys():
                 par_list = list(self.na_all_dict[line].keys())
