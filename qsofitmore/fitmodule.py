@@ -966,10 +966,10 @@ class QSOFitNew(QSOFit):
                     fur_result_tmp = np.array([])
                     fur_result_type_tmp = np.array([])
                     fur_result_name_tmp = np.array([])
-                    if comp_name == 'CIV':
-                        fwhm, sigma, ew, peak, area = self.comb_line_prop(compcenter, line_fit.params)
-                    else:
-                        fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
+                    # if comp_name == 'CIV':
+                    #     fwhm, sigma, ew, peak, area = self.comb_line_prop(compcenter, line_fit.params)
+                    # else:
+                    fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
                     br_name = uniq_linecomp_sort[ii]
                     
                     if self.MC == True and self.n_trails > 0:
@@ -993,7 +993,18 @@ class QSOFitNew(QSOFit):
                     fur_result = np.concatenate([fur_result, fur_result_tmp])
                     fur_result_type = np.concatenate([fur_result_type, fur_result_type_tmp])
                     fur_result_name = np.concatenate([fur_result_name, fur_result_name_tmp])
-                
+                    if comp_name == 'CIV':
+                        civ_fwhm, civ_sigma, civ_ew, civ_peak, civ_area = self.comb_line_prop(compcenter, line_fit.params)
+                        fur_result_civ = np.array(
+                            [civ_fwhm, civ_sigma, civ_ew, civ_peak, civ_area])
+                        fur_result_type_civ = np.array(
+                            ['float', 'float', 'float', 'float', 'float'])
+                        fur_result_name_civ = np.array(
+                            ['CIV_whole_fwhm', 'CIV_whole_sigma', 'CIV_whole_ew',
+                            'CIV_whole_peak', 'CIV_whole_area'])
+                        fur_result = np.concatenate([fur_result, fur_result_civ])
+                        fur_result_type = np.concatenate([fur_result_type, fur_result_type_civ])
+                        fur_result_name = np.concatenate([fur_result_name, fur_result_name_civ])                
                 else:
                     print("less than 10 pixels in line fitting!")
             
@@ -1059,7 +1070,7 @@ class QSOFitNew(QSOFit):
         # print('All line names: {}'.format(all_line_name))
 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV' in line):
                 try:
                     par_ind = np.where(all_line_name==line)[0][0]*3
                     linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1076,7 +1087,7 @@ class QSOFitNew(QSOFit):
                     pass
                     
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1103,8 +1114,10 @@ class QSOFitNew(QSOFit):
         na_all_dict = {}
         if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
             linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])  
+        if 'CIV_br' in linenames and 'CIV_na' in linenames:
+            linenames = np.append(linenames, ['CIV_whole'])  
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -1122,10 +1135,7 @@ class QSOFitNew(QSOFit):
             
             # further line properties
             all_fwhm[tra], all_sigma[tra], all_ew[tra], all_peak[tra], all_area[tra] 
-            if linecompname == 'CIV':
-                broad_all = self.comb_line_prop(compcenter, line_fit.params)
-            else:
-                broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
+            broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
             all_fwhm[tra] = broad_all[0]
             all_sigma[tra] =  broad_all[1]
             all_ew[tra] = broad_all[2]
@@ -1139,7 +1149,7 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1152,7 +1162,7 @@ class QSOFitNew(QSOFit):
                     except:
                         print('Line {} parameters mismatch.'.format(line))
                         pass
-                elif 'whole' in line:
+                elif ('whole' in line) and ('CIV_whole' not in line):
                     linec = line.split('_')[0]
                     linew = linec+'w'
                     # print('Line: {}. Core: {}. Wing: {}.'.format(line, linec, linew))
@@ -1166,9 +1176,16 @@ class QSOFitNew(QSOFit):
                     na_all_dict[line]['sigma'].append(na_tmp[1])
                     na_all_dict[line]['ew'].append(na_tmp[2])
                     na_all_dict[line]['peak'].append(na_tmp[3])
-                    na_all_dict[line]['area'].append(na_tmp[4])          
+                    na_all_dict[line]['area'].append(na_tmp[4])  
+                elif 'CIV_whole' in line:
+                    all_civ = self.comb_line_prop(compcenter, line_fit.params)
+                    na_all_dict[line]['fwhm'].append(all_civ[0])
+                    na_all_dict[line]['sigma'].append(all_civ[1])
+                    na_all_dict[line]['ew'].append(all_civ[2])
+                    na_all_dict[line]['peak'].append(all_civ[3])
+                    na_all_dict[line]['area'].append(all_civ[4]) 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1190,6 +1207,10 @@ class QSOFitNew(QSOFit):
         try:
             keys.remove('OIII4959_whole')
             keys.remove('OIII5007_whole')
+        except:
+            pass
+        try:
+            keys.remove('CIV_whole')
         except:
             pass
         print(repr(keys))
@@ -1239,6 +1260,19 @@ class QSOFitNew(QSOFit):
                             err_tmp = 0.0
                         na_line_result.update({res_name_tmp:res_tmp})
                         na_line_result.update({err_name_tmp:err_tmp})
+            if 'CIV_whole' in self.na_all_dict.keys():
+                par_list = list(self.na_all_dict['CIV_whole'].keys())
+                for ii in range(len(par_list)):
+                    par = par_list[ii]
+                    # res_name_tmp = comp_tmp+'_'+par
+                    # res_tmp = na_tmp[ii]
+                    err_name_tmp = 'CIV_whole_'+par+'_err'
+                    err_tmp = self.na_all_dict['CIV_whole'][par].std()
+                    if err_tmp == 0:
+                        # res_tmp = 0.0
+                        err_tmp = 0.0
+                    # na_line_result.update({res_name_tmp:res_tmp})
+                    na_line_result.update({err_name_tmp:err_tmp})
         elif self.MC == False and self.na_all_dict:
             for line in self.na_all_dict.keys():
                 par_list = list(self.na_all_dict[line].keys())
