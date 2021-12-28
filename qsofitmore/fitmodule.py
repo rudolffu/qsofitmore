@@ -17,6 +17,7 @@ from astropy.cosmology import FlatLambdaCDM
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
+from astropy import constants as ac
 from PyQSOFit import QSOFit
 from .extinction import *
 from .auxmodule import *
@@ -702,7 +703,8 @@ class QSOFitNew(QSOFit):
             temp_gauss_result = gauss_result
             for p in range(int(len(temp_gauss_result)/mc_flag/3)):
                 # warn that the width used to separate narrow from broad is not exact 1200 km s-1 which would lead to wrong judgement
-                if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                # if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                if temp_gauss_result[(2+p*3)*mc_flag] - 0.0017 <= 1e-10:    
                     color = 'g'
                 else:
                     color = 'r'
@@ -1452,3 +1454,7 @@ class QSOFitNew(QSOFit):
                 fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
         
         return fwhm, sigma, ew, peak, area
+
+    def CalFWHM(self, logsigma):
+        """transfer the logFWHM to normal frame"""
+        return 2*np.sqrt(2*np.log(2))*(np.exp(logsigma)-1)*ac.c.to(u.Unit('km/s')).value
