@@ -1,3 +1,4 @@
+Cite version 1.1.0:
 @software{yuming_fu_2021_5810042,
   author       = {Yuming Fu},
   title        = {{QSOFITMORE: a python package for fitting UV- 
@@ -8,4 +9,17 @@
   version      = {v1.1.0},
   doi          = {10.5281/zenodo.5810042},
   url          = {https://doi.org/10.5281/zenodo.5810042}
+}
+
+Cite all versions:
+@software{yuming_fu_2021_4893646,
+  author       = {Yuming Fu},
+  title        = {{QSOFITMORE: a python package for fitting UV- 
+                   optical spectra of quasars}},
+  month        = dec,
+  year         = 2021,
+  publisher    = {Zenodo},
+  version      = {latest},
+  doi          = {10.5281/zenodo.4893646},
+  url          = {https://doi.org/10.5281/zenodo.4893646}
 }
