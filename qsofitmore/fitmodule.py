@@ -718,6 +718,7 @@ class QSOFitNew(QSOFit):
             
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
                     zorder=6)  # supplement the emission lines in the first subplot
+            self.lines_total = lines_total
             for c in range(self.ncomp):
                 tname = texlinename(uniq_linecomp_sort[c])
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
