@@ -1,5 +1,5 @@
 # QSOFITMORE
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4893734.svg)](https://doi.org/10.5281/zenodo.4893734)   
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5810042.svg)](https://doi.org/10.5281/zenodo.5810042)  
 A wrapper of PyQSOFit for customization
 
 ### Features  
