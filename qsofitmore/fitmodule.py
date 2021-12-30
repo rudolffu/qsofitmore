@@ -1286,7 +1286,11 @@ class QSOFitNew(QSOFit):
                 for i in range(len(par_list)):
                     par = par_list[i]
                     res_name_tmp = line+'_'+par
-                    res_tmp = self.na_all_dict[line][par][0]
+                    res_list = self.na_all_dict[line][par]
+                    if res_list:
+                        res_tmp = res_list[0]
+                    else:
+                        res_tmp = 0.0
                     if res_tmp == 0:
                         res_tmp = 0.0
                     na_line_result.update({res_name_tmp:res_tmp})
