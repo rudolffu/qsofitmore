@@ -933,7 +933,7 @@ class QSOFitNew(QSOFit):
                          [line_fit.dof+dof_fix], [np.nanmedian(line_flux[ind_n]/err[ind_n])]]).flatten()
                     comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int', 'float'])
                     comp_result_name_tmp = np.array(
-                        [comp_name+'_ngoodpix', comp_name+'_line_status', comp_name+'_line_min_chi2',
+                        ['LINE_NPIX_'+comp_name, comp_name+'_line_status', comp_name+'_line_min_chi2',
                          comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof', 
                          'LINE_MED_SN_'+comp_name])
                     comp_result = np.concatenate([comp_result, comp_result_tmp])
