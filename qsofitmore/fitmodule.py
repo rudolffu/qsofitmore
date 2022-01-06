@@ -338,7 +338,9 @@ class QSOFitNew(QSOFit):
         
         if wave[tmp_all].shape[0] < 10:
             print('Continuum fitting pixel < 10.  ')
-        
+
+        SNR_SPEC = np.nanmedian(flux/err)
+
         # set initial paramiters for continuum
         if self.initial_guess is not None:
             pp0 = self.initial_guess
@@ -404,7 +406,7 @@ class QSOFitNew(QSOFit):
                                                                     self.n_trails)
             
             self.conti_result = np.array(
-                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
                  conti_para_std[0], conti_fit.params[1], conti_para_std[1], conti_fit.params[2], conti_para_std[2],
                  conti_fit.params[3], conti_para_std[3], conti_fit.params[4], conti_para_std[4], conti_fit.params[5],
                  conti_para_std[5], conti_fit.params[6], conti_para_std[6], conti_fit.params[7], conti_para_std[7],
@@ -412,12 +414,12 @@ class QSOFitNew(QSOFit):
                  conti_para_std[10], conti_fit.params[11], conti_para_std[11], conti_fit.params[12], conti_para_std[12],
                  conti_fit.params[13], conti_para_std[13], L[0], all_L_std[0], L[1], all_L_std[1], L[2], all_L_std[2]])
             self.conti_result_type = np.array(
-                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float'])
             self.conti_result_name = np.array(
-                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
                  'Fe_uv_FWHM', 'Fe_uv_FWHM_err', 'Fe_uv_shift', 'Fe_uv_shift_err', 'Fe_op_norm', 'Fe_op_norm_err',
                  'Fe_op_FWHM', 'Fe_op_FWHM_err', 'Fe_op_shift', 'Fe_op_shift_err', 'PL_norm', 'PL_norm_err', 'PL_slope',
                  'PL_slope_err', 'Blamer_norm', 'Blamer_norm_err', 'Balmer_Te', 'Balmer_Te_err', 'Balmer_Tau',
@@ -440,17 +442,17 @@ class QSOFitNew(QSOFit):
                                                    [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
         else:
             self.conti_result = np.array(
-                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
                  conti_fit.params[1], conti_fit.params[2], conti_fit.params[3], conti_fit.params[4],
                  conti_fit.params[5], conti_fit.params[6], conti_fit.params[7], conti_fit.params[8],
                  conti_fit.params[9], conti_fit.params[10], conti_fit.params[11], conti_fit.params[12],
                  conti_fit.params[13], L[0], L[1], L[2]])
             self.conti_result_type = np.array(
-                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float'])
             self.conti_result_name = np.array(
-                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
                  'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'Blamer_norm',
                  'Balmer_Te', 'Balmer_Tau_e', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
             if self.broken_pl == True:
@@ -928,11 +930,12 @@ class QSOFitNew(QSOFit):
                     comp_result_tmp = np.array(
                         [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
-                         [line_fit.dof+dof_fix]]).flatten()
-                    comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int'])
+                         [line_fit.dof+dof_fix], [np.nanmedian(line_flux[ind_n]/err[ind_n])]]).flatten()
+                    comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int', 'float'])
                     comp_result_name_tmp = np.array(
                         [comp_name+'_ngoodpix', comp_name+'_line_status', comp_name+'_line_min_chi2',
-                         comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof'])
+                         comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof', 
+                         'LINE_MED_SN_'+comp_name])
                     comp_result = np.concatenate([comp_result, comp_result_tmp])
                     comp_result_name = np.concatenate([comp_result_name, comp_result_name_tmp])
                     comp_result_type = np.concatenate([comp_result_type, comp_result_type_tmp])
