@@ -881,6 +881,7 @@ class QSOFitNew(QSOFit):
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
                         wing_status = check_wings(na_dict)
+                        self.wing_status = wing_status
                         if None in wing_status:
                             pass
                         elif np.sum(wing_status)<2:
@@ -1161,6 +1162,8 @@ class QSOFitNew(QSOFit):
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
                         na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
+                        if line_fit.params[par_ind+2] > 0.0017:
+                            na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
                         na_all_dict[line]['fwhm'].append(na_tmp[0])
                         na_all_dict[line]['sigma'].append(na_tmp[1])
                         na_all_dict[line]['ew'].append(na_tmp[2])
@@ -1243,6 +1246,8 @@ class QSOFitNew(QSOFit):
                 line_sigma = np.float(df_gauss[line+'_1_sigma'])
                 line_param = np.array([line_scale,line_centerwave,line_sigma])
                 na_tmp = self.line_prop(linecenter, line_param, 'narrow')
+                if line_sigma > 0.0017:
+                    na_tmp = self.line_prop(linecenter, line_param, 'broad')
                 par_list = list(self.na_all_dict[line].keys())
                 for i in range(len(par_list)):
                     par = par_list[i]
