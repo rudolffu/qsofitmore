@@ -721,8 +721,8 @@ class QSOFitNew(QSOFit):
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
                     zorder=6)  # supplement the emission lines in the first subplot
             self.lines_total = lines_total
-            for c in range(self.ncomp):
-                tname = texlinename(uniq_linecomp_sort[c])
+            for c, linecompname in enumerate(uniq_linecomp_sort):
+                tname = texlinename(linecompname)
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
                 axn[1][c].plot(wave, self.line_flux, 'k', zorder=0)
                 
@@ -735,7 +735,8 @@ class QSOFitNew(QSOFit):
                 axn[1][c].set_xticks([all_comp_range[2*c], np.round((all_comp_range[2*c]+all_comp_range[2*c+1])/2, -1),
                                       all_comp_range[2*c+1]])
                 axn[1][c].text(0.02, 0.9, tname, fontsize=20, transform=axn[1][c].transAxes)
-                axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(self.comp_result[c*6+3]), 2)),
+                rchi2 = float(self.comp_result[np.where(self.comp_result_name==linecompname+'_line_red_chi2')])
+                axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(rchi2), 2)),
                                fontsize=16, transform=axn[1][c].transAxes)
         else:
             fig, ax = plt.subplots(nrows=1, ncols=1,
@@ -1034,6 +1035,7 @@ class QSOFitNew(QSOFit):
             print("No line to fit! Pleasse set Line_fit to FALSE or enlarge wave_range!")
 
         self.comp_result = comp_result
+        self.comp_result_name = comp_result_name
         self.gauss_result = gauss_result
         self.gauss_result_name = gauss_result_name
         # if self.MC == True and self.na_all_dict:
