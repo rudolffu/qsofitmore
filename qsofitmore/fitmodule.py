@@ -339,7 +339,7 @@ class QSOFitNew(QSOFit):
         if wave[tmp_all].shape[0] < 10:
             print('Continuum fitting pixel < 10.  ')
 
-        SNR_SPEC = np.nanmedian(flux/err)
+        SNR_SPEC = np.nanmedian(self.flux_prereduced/self.err_prereduced)
 
         # set initial paramiters for continuum
         if self.initial_guess is not None:
@@ -927,11 +927,11 @@ class QSOFitNew(QSOFit):
                     if self.tie_flux_1 == True:
                         dof_fix += np.max((len(self.ind_tie_findex1), 1))-1
                         dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
-                    
+                    med_sn = np.nanmedian(self.flux_prereduced[ind_n]/self.err_prereduced[ind_n])
                     comp_result_tmp = np.array(
                         [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
-                         [line_fit.dof+dof_fix], [np.nanmedian(line_flux[ind_n]/err[ind_n])]]).flatten()
+                         [line_fit.dof+dof_fix], [med_sn]]).flatten()
                     comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int', 'float'])
                     comp_result_name_tmp = np.array(
                         ['LINE_NPIX_'+comp_name, comp_name+'_line_status', comp_name+'_line_min_chi2',
