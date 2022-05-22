@@ -1162,7 +1162,7 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
+                if ('br' not in line) and ('whole' not in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
