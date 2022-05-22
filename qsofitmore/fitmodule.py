@@ -78,6 +78,7 @@ class QSOFitNew(QSOFit):
         self.lam = np.asarray(lam, dtype=np.float64)
         self.flux = np.asarray(flux, dtype=np.float64)
         self.err = np.asarray(err, dtype=np.float64)
+        self.sn_obs = self.flux/self.err
         self.z = z
         self.and_mask = and_mask
         self.or_mask = or_mask
@@ -927,7 +928,7 @@ class QSOFitNew(QSOFit):
                     if self.tie_flux_1 == True:
                         dof_fix += np.max((len(self.ind_tie_findex1), 1))-1
                         dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
-                    med_sn = np.nanmedian(self.flux_prereduced[ind_n])/np.nanmedian(self.err_prereduced[ind_n])
+                    med_sn = np.nanmedian(self.sn_obs[ind_n])
                     comp_result_tmp = np.array(
                         [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
