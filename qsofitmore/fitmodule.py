@@ -875,6 +875,7 @@ class QSOFitNew(QSOFit):
                 
                 # get the pixel index in complex region and remove negtive abs in line region
                 ind_n = np.where((wave > comp_range[0]) & (wave < comp_range[1]) & (ind_neg_line == True), True, False)
+                ind_n_all = np.where((wave > comp_range[0]) & (wave < comp_range[1]))
                 num_good_pix = np.sum(ind_n)
                 comp_name = linelist['compname'][ind_line][0]
                 # print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
@@ -928,7 +929,7 @@ class QSOFitNew(QSOFit):
                     if self.tie_flux_1 == True:
                         dof_fix += np.max((len(self.ind_tie_findex1), 1))-1
                         dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
-                    med_sn = np.nanmedian(self.sn_obs[ind_n])
+                    med_sn = np.nanmedian(self.sn_obs[ind_n_all])
                     comp_result_tmp = np.array(
                         [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
