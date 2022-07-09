@@ -37,7 +37,7 @@ Install [kapteyn](https://www.astro.rug.nl/software/kapteyn/):
 pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.0.tar.gz
 ```
 
-After installing the dependencies, download and set up both `PyQSOFit` and `qsofitmore` packages.
+After installing the dependencies, download and set up the `qsofitmore` package.
 
 ```
 git clone --recursive https://github.com/rudolffu/qsofitmore.git 
