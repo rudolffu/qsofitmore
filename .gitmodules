@@ -1,3 +1,6 @@
 [submodule "PyQSOFit"]
 	path = PyQSOFit
 	url = git@github.com:rudolffu/PyQSOFit.git
+[submodule "qsofitmore/PyQSOFit"]
+	path = qsofitmore/PyQSOFit
+	url = ../PyQSOFit
