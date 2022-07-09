@@ -12,7 +12,7 @@ requirements = [
 
 setuptools.setup(
     name="qsofitmore", 
-    version="1.1.1",
+    version="1.2.0-beta",
     author="Yuming Fu",
     author_email="fuympku@outlook.com",
     description="A python package for fitting UV-optical spectra of quasars. Currently a wrapper of PyQSOFit for customization.",
