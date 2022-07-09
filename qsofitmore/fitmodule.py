@@ -17,6 +17,7 @@ from astropy.cosmology import FlatLambdaCDM
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
+from astropy import constants as ac
 from PyQSOFit import QSOFit
 from .extinction import *
 from .auxmodule import *
@@ -77,6 +78,7 @@ class QSOFitNew(QSOFit):
         self.lam = np.asarray(lam, dtype=np.float64)
         self.flux = np.asarray(flux, dtype=np.float64)
         self.err = np.asarray(err, dtype=np.float64)
+        self.sn_obs = self.flux/self.err
         self.z = z
         self.and_mask = and_mask
         self.or_mask = or_mask
@@ -337,7 +339,9 @@ class QSOFitNew(QSOFit):
         
         if wave[tmp_all].shape[0] < 10:
             print('Continuum fitting pixel < 10.  ')
-        
+
+        SNR_SPEC = np.nanmedian(self.flux_prereduced/self.err_prereduced)
+
         # set initial paramiters for continuum
         if self.initial_guess is not None:
             pp0 = self.initial_guess
@@ -403,7 +407,7 @@ class QSOFitNew(QSOFit):
                                                                     self.n_trails)
             
             self.conti_result = np.array(
-                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
                  conti_para_std[0], conti_fit.params[1], conti_para_std[1], conti_fit.params[2], conti_para_std[2],
                  conti_fit.params[3], conti_para_std[3], conti_fit.params[4], conti_para_std[4], conti_fit.params[5],
                  conti_para_std[5], conti_fit.params[6], conti_para_std[6], conti_fit.params[7], conti_para_std[7],
@@ -411,12 +415,12 @@ class QSOFitNew(QSOFit):
                  conti_para_std[10], conti_fit.params[11], conti_para_std[11], conti_fit.params[12], conti_para_std[12],
                  conti_fit.params[13], conti_para_std[13], L[0], all_L_std[0], L[1], all_L_std[1], L[2], all_L_std[2]])
             self.conti_result_type = np.array(
-                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float'])
             self.conti_result_name = np.array(
-                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
                  'Fe_uv_FWHM', 'Fe_uv_FWHM_err', 'Fe_uv_shift', 'Fe_uv_shift_err', 'Fe_op_norm', 'Fe_op_norm_err',
                  'Fe_op_FWHM', 'Fe_op_FWHM_err', 'Fe_op_shift', 'Fe_op_shift_err', 'PL_norm', 'PL_norm_err', 'PL_slope',
                  'PL_slope_err', 'Blamer_norm', 'Blamer_norm_err', 'Balmer_Te', 'Balmer_Te_err', 'Balmer_Tau',
@@ -439,17 +443,17 @@ class QSOFitNew(QSOFit):
                                                    [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
         else:
             self.conti_result = np.array(
-                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, self.SN_ratio_conti, conti_fit.params[0],
+                [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
                  conti_fit.params[1], conti_fit.params[2], conti_fit.params[3], conti_fit.params[4],
                  conti_fit.params[5], conti_fit.params[6], conti_fit.params[7], conti_fit.params[8],
                  conti_fit.params[9], conti_fit.params[10], conti_fit.params[11], conti_fit.params[12],
                  conti_fit.params[13], L[0], L[1], L[2]])
             self.conti_result_type = np.array(
-                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
+                ['float', 'float', 'int', 'int', 'int', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float', 'float',
                  'float'])
             self.conti_result_name = np.array(
-                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
+                ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
                  'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'Blamer_norm',
                  'Balmer_Te', 'Balmer_Tau_e', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
             if self.broken_pl == True:
@@ -702,7 +706,8 @@ class QSOFitNew(QSOFit):
             temp_gauss_result = gauss_result
             for p in range(int(len(temp_gauss_result)/mc_flag/3)):
                 # warn that the width used to separate narrow from broad is not exact 1200 km s-1 which would lead to wrong judgement
-                if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                # if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                if temp_gauss_result[(2+p*3)*mc_flag] - 0.0017 <= 1e-10:    
                     color = 'g'
                 else:
                     color = 'r'
@@ -716,8 +721,9 @@ class QSOFitNew(QSOFit):
             
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
                     zorder=6)  # supplement the emission lines in the first subplot
-            for c in range(self.ncomp):
-                tname = texlinename(uniq_linecomp_sort[c])
+            self.lines_total = lines_total
+            for c, linecompname in enumerate(uniq_linecomp_sort):
+                tname = texlinename(linecompname)
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
                 axn[1][c].plot(wave, self.line_flux, 'k', zorder=0)
                 
@@ -730,7 +736,8 @@ class QSOFitNew(QSOFit):
                 axn[1][c].set_xticks([all_comp_range[2*c], np.round((all_comp_range[2*c]+all_comp_range[2*c+1])/2, -1),
                                       all_comp_range[2*c+1]])
                 axn[1][c].text(0.02, 0.9, tname, fontsize=20, transform=axn[1][c].transAxes)
-                axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(self.comp_result[c*6+3]), 2)),
+                rchi2 = float(self.comp_result[np.where(self.comp_result_name==linecompname+'_line_red_chi2')])
+                axn[1][c].text(0.02, 0.80, r'$\chi ^2_r=$'+str(np.round(float(rchi2), 2)),
                                fontsize=16, transform=axn[1][c].transAxes)
         else:
             fig, ax = plt.subplots(nrows=1, ncols=1,
@@ -868,6 +875,7 @@ class QSOFitNew(QSOFit):
                 
                 # get the pixel index in complex region and remove negtive abs in line region
                 ind_n = np.where((wave > comp_range[0]) & (wave < comp_range[1]) & (ind_neg_line == True), True, False)
+                ind_n_all = np.where((wave > comp_range[0]) & (wave < comp_range[1]))
                 num_good_pix = np.sum(ind_n)
                 comp_name = linelist['compname'][ind_line][0]
                 # print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
@@ -878,7 +886,10 @@ class QSOFitNew(QSOFit):
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
                         wing_status = check_wings(na_dict)
-                        if np.sum(wing_status)<2:
+                        self.wing_status = wing_status
+                        if None in wing_status:
+                            pass
+                        elif np.sum(wing_status)<2:
                             linelist = linelist[linelist['linename']!='OIII4959w']
                             linelist = linelist[linelist['linename']!='OIII5007w']
                             self.linelist = linelist
@@ -918,15 +929,16 @@ class QSOFitNew(QSOFit):
                     if self.tie_flux_1 == True:
                         dof_fix += np.max((len(self.ind_tie_findex1), 1))-1
                         dof_fix += np.max((len(self.ind_tie_findex2), 1))-1
-                    
+                    med_sn = np.nanmedian(self.sn_obs[ind_n_all])
                     comp_result_tmp = np.array(
                         [[num_good_pix], [line_fit.status], [line_fit.chi2_min],
                          [line_fit.chi2_min/(line_fit.dof+dof_fix)], [line_fit.niter],
-                         [line_fit.dof+dof_fix]]).flatten()
-                    comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int'])
+                         [line_fit.dof+dof_fix], [med_sn]]).flatten()
+                    comp_result_type_tmp = np.array(['int', 'int', 'float', 'float', 'int', 'int', 'float'])
                     comp_result_name_tmp = np.array(
-                        [comp_name+'_ngoodpix', comp_name+'_line_status', comp_name+'_line_min_chi2',
-                         comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof'])
+                        ['LINE_NPIX_'+comp_name, comp_name+'_line_status', comp_name+'_line_min_chi2',
+                         comp_name+'_line_red_chi2', comp_name+'_niter', comp_name+'_ndof', 
+                         'LINE_MED_SN_'+comp_name])
                     comp_result = np.concatenate([comp_result, comp_result_tmp])
                     comp_result_name = np.concatenate([comp_result_name, comp_result_name_tmp])
                     comp_result_type = np.concatenate([comp_result_type, comp_result_type_tmp])
@@ -964,6 +976,9 @@ class QSOFitNew(QSOFit):
                     fur_result_tmp = np.array([])
                     fur_result_type_tmp = np.array([])
                     fur_result_name_tmp = np.array([])
+                    # if comp_name == 'CIV':
+                    #     fwhm, sigma, ew, peak, area = self.comb_line_prop(compcenter, line_fit.params)
+                    # else:
                     fwhm, sigma, ew, peak, area = self.line_prop(compcenter, line_fit.params, 'broad')
                     br_name = uniq_linecomp_sort[ii]
                     
@@ -988,7 +1003,18 @@ class QSOFitNew(QSOFit):
                     fur_result = np.concatenate([fur_result, fur_result_tmp])
                     fur_result_type = np.concatenate([fur_result_type, fur_result_type_tmp])
                     fur_result_name = np.concatenate([fur_result_name, fur_result_name_tmp])
-                
+                    if comp_name == 'CIV':
+                        civ_fwhm, civ_sigma, civ_ew, civ_peak, civ_area = self.comb_line_prop(compcenter, line_fit.params)
+                        fur_result_civ = np.array(
+                            [civ_fwhm, civ_sigma, civ_ew, civ_peak, civ_area])
+                        fur_result_type_civ = np.array(
+                            ['float', 'float', 'float', 'float', 'float'])
+                        fur_result_name_civ = np.array(
+                            ['CIV_whole_fwhm', 'CIV_whole_sigma', 'CIV_whole_ew',
+                            'CIV_whole_peak', 'CIV_whole_area'])
+                        fur_result = np.concatenate([fur_result, fur_result_civ])
+                        fur_result_type = np.concatenate([fur_result_type, fur_result_type_civ])
+                        fur_result_name = np.concatenate([fur_result_name, fur_result_name_civ])                
                 else:
                     print("less than 10 pixels in line fitting!")
             
@@ -1011,6 +1037,7 @@ class QSOFitNew(QSOFit):
             print("No line to fit! Pleasse set Line_fit to FALSE or enlarge wave_range!")
 
         self.comp_result = comp_result
+        self.comp_result_name = comp_result_name
         self.gauss_result = gauss_result
         self.gauss_result_name = gauss_result_name
         # if self.MC == True and self.na_all_dict:
@@ -1037,7 +1064,8 @@ class QSOFitNew(QSOFit):
         linenames = linelist[linelist['compname']==linecompname]['linename']
         na_all_dict = {}
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            if 'br' not in line:
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -1054,7 +1082,8 @@ class QSOFitNew(QSOFit):
         # print('All line names: {}'.format(all_line_name))
 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV' in line):
+            if 'br' not in line:
                 try:
                     par_ind = np.where(all_line_name==line)[0][0]*3
                     linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
@@ -1071,7 +1100,8 @@ class QSOFitNew(QSOFit):
                     pass
                     
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line):
+            if 'br' not in line:    
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1098,8 +1128,11 @@ class QSOFitNew(QSOFit):
         na_all_dict = {}
         if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
             linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])  
+        if 'CIV_br' in linenames and 'CIV_na' in linenames:
+            linenames = np.append(linenames, ['CIV_whole'])  
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            if 'br' not in line:
                 emp_dict = {'fwhm': [],
                             'sigma' : [],
                             'ew' : [],
@@ -1131,11 +1164,13 @@ class QSOFitNew(QSOFit):
             all_line_name = np.asarray(all_line_name)
 
             for line in linenames: 
-                if ('br' not in line and 'na' not in line and 'whole' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+                if ('br' not in line) and ('whole' not in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
                         na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
+                        if line_fit.params[par_ind+2] > 0.0017:
+                            na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
                         na_all_dict[line]['fwhm'].append(na_tmp[0])
                         na_all_dict[line]['sigma'].append(na_tmp[1])
                         na_all_dict[line]['ew'].append(na_tmp[2])
@@ -1144,7 +1179,7 @@ class QSOFitNew(QSOFit):
                     except:
                         print('Line {} parameters mismatch.'.format(line))
                         pass
-                elif 'whole' in line:
+                elif ('whole' in line) and ('CIV_whole' not in line):
                     linec = line.split('_')[0]
                     linew = linec+'w'
                     # print('Line: {}. Core: {}. Wing: {}.'.format(line, linec, linew))
@@ -1158,9 +1193,17 @@ class QSOFitNew(QSOFit):
                     na_all_dict[line]['sigma'].append(na_tmp[1])
                     na_all_dict[line]['ew'].append(na_tmp[2])
                     na_all_dict[line]['peak'].append(na_tmp[3])
-                    na_all_dict[line]['area'].append(na_tmp[4])          
+                    na_all_dict[line]['area'].append(na_tmp[4])  
+                elif 'CIV_whole' in line:
+                    all_civ = self.comb_line_prop(compcenter, line_fit.params)
+                    na_all_dict[line]['fwhm'].append(all_civ[0])
+                    na_all_dict[line]['sigma'].append(all_civ[1])
+                    na_all_dict[line]['ew'].append(all_civ[2])
+                    na_all_dict[line]['peak'].append(all_civ[3])
+                    na_all_dict[line]['area'].append(all_civ[4]) 
         for line in linenames: 
-            if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line):
+            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            if 'br' not in line:
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
@@ -1184,8 +1227,25 @@ class QSOFitNew(QSOFit):
             keys.remove('OIII5007_whole')
         except:
             pass
+        try:
+            keys.remove('CIV_whole')
+        except:
+            pass
         print(repr(keys))
         if self.MC == True and self.na_all_dict:
+            if 'CIV_whole' in self.na_all_dict.keys():
+                par_list = list(self.na_all_dict['CIV_whole'].keys())
+                for ii in range(len(par_list)):
+                    par = par_list[ii]
+                    # res_name_tmp = comp_tmp+'_'+par
+                    # res_tmp = na_tmp[ii]
+                    err_name_tmp = 'CIV_whole_'+par+'_err'
+                    err_tmp = self.na_all_dict['CIV_whole'][par].std()
+                    if err_tmp == 0:
+                        # res_tmp = 0.0
+                        err_tmp = 0.0
+                    # na_line_result.update({res_name_tmp:res_tmp})
+                    na_line_result.update({err_name_tmp:err_tmp})
             for line in keys:
                 linecenter = np.float(linelist[linelist['linename']==line]['lambda'].item())
                 line_scale = np.float(df_gauss[line+'_1_scale'])
@@ -1193,6 +1253,8 @@ class QSOFitNew(QSOFit):
                 line_sigma = np.float(df_gauss[line+'_1_sigma'])
                 line_param = np.array([line_scale,line_centerwave,line_sigma])
                 na_tmp = self.line_prop(linecenter, line_param, 'narrow')
+                if line_sigma > 0.0017:
+                    na_tmp = self.line_prop(linecenter, line_param, 'broad')
                 par_list = list(self.na_all_dict[line].keys())
                 for i in range(len(par_list)):
                     par = par_list[i]
@@ -1237,7 +1299,11 @@ class QSOFitNew(QSOFit):
                 for i in range(len(par_list)):
                     par = par_list[i]
                     res_name_tmp = line+'_'+par
-                    res_tmp = self.na_all_dict[line][par][0]
+                    res_list = self.na_all_dict[line][par]
+                    if res_list:
+                        res_tmp = res_list[0]
+                    else:
+                        res_tmp = 0.0
                     if res_tmp == 0:
                         res_tmp = 0.0
                     na_line_result.update({res_name_tmp:res_tmp})
@@ -1405,3 +1471,7 @@ class QSOFitNew(QSOFit):
                 fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
         
         return fwhm, sigma, ew, peak, area
+
+    def CalFWHM(self, logsigma):
+        """transfer the logFWHM to normal frame"""
+        return 2*np.sqrt(2*np.log(2))*(np.exp(logsigma)-1)*ac.c.to(u.Unit('km/s')).value

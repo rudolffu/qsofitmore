@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="qsofitmore", 
-    version="0.0.1",
+    version="1.1.1",
     author="Yuming Fu",
     author_email="fuympku@outlook.com",
     description="A wrapper of PyQSOFit for customization",

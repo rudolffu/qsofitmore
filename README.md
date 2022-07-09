@@ -1,5 +1,5 @@
 # QSOFITMORE
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.4893734.svg)](https://doi.org/10.5281/zenodo.4893734)   
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5810042.svg)](https://doi.org/10.5281/zenodo.5810042)  
 A wrapper of PyQSOFit for customization
 
 ### Features  
@@ -8,10 +8,12 @@ A wrapper of PyQSOFit for customization
 - Dust maps and extinction laws other than SFD98 and CCM. 
 - LaTeX rendering for line names in plots. 
 
-### To do:  
-- Parallel the MC processes.
-- Intergrate narrow line measurements to the output fits file. 
-- A simple tutorial of using `qsofitmore` with example(s).  
+### Updates from v1.0.0 to v1.1.0:
+- Added an optional broken power-law model in the continuum fitting process.  
+- Enabled line property outputs for all narrow lines, OIII core+wing as a whole, and CIV br+na as a whole.  
+- Used new criterion to verify narrow/broad components in self._PlotFig() to prevent narrow components from being plotted as red (broad) lines.  
+- Changed prefix of comp_result from number to the complex name.  
+- Bug fixes.
 
 
 ## 1. Installation
