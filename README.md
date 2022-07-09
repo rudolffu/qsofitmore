@@ -15,6 +15,10 @@ A wrapper of PyQSOFit for customization
 - Changed prefix of comp_result from number to the complex name.  
 - Bug fixes.
 
+### Updates from v1.1.0 to v1.2.0:
+- `PyQSOFit` is now included as a submodule. 
+- The installation process is simplified by adding the dependencies `sfdmap`, `PyAstronomy`, and `uncertainties` to `setup.py`, and by adding `PyQSOFit` to `requirements.txt`.
+
 
 ## 1. Installation
 Currently, the fitting class of `qsofitmore` is a wrapper of that of `PyQSOFit`. Therefore `PyQSOFit` and its dependencies are required to run `qsofitmore`. 
@@ -25,43 +29,20 @@ Dependencies of `qsofitmore`: uncertainties, dustmaps (optional, needed when usi
 
 Assuming you have anaconda installed, the following steps demonstrate how to install dependencies above.
 
-Install sfdmap: 
-```
-# Install sfdmap from conda-forge channel
-conda install -c conda-forge sfdmap
-# Install sfdmap with pip
-pip install sfdmap
-```
+
 
 Install [kapteyn](https://www.astro.rug.nl/software/kapteyn/):  
 ```
 # From kapteyn website
 pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.0.tar.gz
-# From conda-forge (NOT tested)
-conda install -c conda-forge kapteyn
-```
-
-Install [PyAstronomy](https://pyastronomy.readthedocs.io/en/latest/pyaCDoc/installingPyA.html) with pip: 
-```
-pip install PyAstronomy
-```
-
-```
-conda install -c conda-forge uncertainties
 ```
 
 After installing the dependencies, download and set up both `PyQSOFit` and `qsofitmore` packages.
 
 ```
-mkdir ~/tools # or any other path you like
-cd ~/tools 
-git clone https://github.com/rudolffu/PyQSOFit.git 
-git clone https://github.com/rudolffu/qsofitmore.git 
-cp ~/tools/qsofitmore/qsofitmore/bin/pyqsofit-setup.py ~/tools/PyQSOFit/ 
-cd ~/tools/PyQSOFit  
-python pyqsofit-setup.py develop 
-cd ~/tools/qsofitmore 
-python setup.py develop  
+git clone --recursive https://github.com/rudolffu/qsofitmore.git 
+cd qsofitmore 
+python -m pip install -r requirements.txt 
 ```
 
 Install dustmaps (optional):

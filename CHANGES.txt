@@ -1,0 +1,10 @@
+### Updates from v1.0.0 to v1.1.0:
+- Added an optional broken power-law model in the continuum fitting process.  
+- Enabled line property outputs for all narrow lines, OIII core+wing as a whole, and CIV br+na as a whole.  
+- Used new criterion to verify narrow/broad components in self._PlotFig() to prevent narrow components from being plotted as red (broad) lines.  
+- Changed prefix of comp_result from number to the complex name.  
+- Bug fixes.
+
+### Updates from v1.1.0 to v1.2.0:
+- `PyQSOFit` is now included as a submodule. 
+- The installation process is simplified by adding the dependencies `sfdmap`, `PyAstronomy`, and `uncertainties` to `setup.py`, and by adding `PyQSOFit` to `requirements.txt`.
