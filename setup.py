@@ -19,7 +19,7 @@ setuptools.setup(
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/rudolffu/qsofitmore",
-    packages=find_packages()+find_packages("qsofitmore/PyQSOFit/"),
+    packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",
         "License :: OSI Approved :: GNU GENERAL PUBLIC LICENSE V3",
