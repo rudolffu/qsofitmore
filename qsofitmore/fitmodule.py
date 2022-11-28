@@ -399,9 +399,9 @@ class QSOFitNew(QSOFit):
         if self.initial_guess is not None:
             pp0 = self.initial_guess
         else:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0.])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0.1, 15000., 0.5, 0., 0., 0.])
         if self.broken_pl == True:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0., -0.35])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0.1, 15000., 0.5, 0., 0., 0., -0.35])
         conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
         tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
@@ -716,7 +716,8 @@ class QSOFitNew(QSOFit):
         bbflux = bb_lam(xval).value*3.14   # in units of ergs/cm2/s/A
         tau = pp[2]*(xval.value/lambda_BE)**3
         result = pp[0] * bbflux * (1 - np.exp(-tau))
-        ind = np.where(xval.value > lambda_BE, True, False)
+        ind = ((xval.value < 2000) | (xval.value > 4000))
+        # ind = np.where(xval.value > lambda_BE, True, False)
         if ind.any() == True:
             result[ind] = 0
         return result
