@@ -33,6 +33,7 @@ else:
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
 dustmap_path = pkg_resources.resource_filename('PyQSOFit', '/sfddata/')
+new_datapath = pkg_resources.resource_filename('qsofitmore', '/ext_data/')
 
 __all__ = ['QSOFitNew']
 
@@ -324,6 +325,7 @@ class QSOFitNew(QSOFit):
         # global fe_uv, fe_op
         self.fe_uv = np.genfromtxt(datapath+'fe_uv.txt')
         self.fe_op = np.genfromtxt(datapath+'fe_optical.txt')
+        self.fe_verner = np.genfromtxt(new_datapath+'Fe_Verner.txt')
         
         # do continuum fit--------------------------
         window_all = np.array(
@@ -473,18 +475,23 @@ class QSOFitNew(QSOFit):
         # save different models--------------------
         f_fe_mgii_model = self.Fe_flux_mgii(wave, conti_fit.params[0:3])
         f_fe_balmer_model = self.Fe_flux_balmer(wave, conti_fit.params[3:6])
+        f_fe_verner_model = self.Fe_flux_verner(wave, conti_fit.params[3:6])
         f_pl_model = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]
         if self.broken_pl == True:
             f_pl_model = broken_pl_model(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
         f_bc_model = self.Balmer_conti(wave, conti_fit.params[8:11])
         f_poly_model = self.F_poly_conti(wave, conti_fit.params[11:14])
-        f_conti_model = (f_pl_model+f_fe_mgii_model+f_fe_balmer_model+f_poly_model+f_bc_model)
+        if self.Fe_verner09 == True:
+            f_conti_model = (f_pl_model+f_fe_verner_model+f_poly_model+f_bc_model)
+        else:
+            f_conti_model = (f_pl_model+f_fe_mgii_model+f_fe_balmer_model+f_poly_model+f_bc_model)
         line_flux = flux-f_conti_model
         
         self.f_conti_model = f_conti_model
         self.f_bc_model = f_bc_model
         self.f_fe_uv_model = f_fe_mgii_model
         self.f_fe_op_model = f_fe_balmer_model
+        self.f_fe_verner_model = f_fe_verner_model
         self.f_pl_model = f_pl_model
         self.f_poly_model = f_poly_model
         self.line_flux = line_flux
@@ -509,6 +516,7 @@ class QSOFitNew(QSOFit):
         f_Fe_MgII = self.Fe_flux_mgii(xval, pp[0:3])
         # iron flux for balmer line region
         f_Fe_Balmer = self.Fe_flux_balmer(xval, pp[3:6])
+        f_Fe_verner = self.Fe_flux_verner(xval, pp[3:6])
         # power-law continuum
         f_pl = pp[6]*(xval/3000.0)**pp[7]
         # Balmer continuum
@@ -518,12 +526,17 @@ class QSOFitNew(QSOFit):
         if self.broken_pl == True:
             f_pl = broken_pl_model(xval, pp[7], pp[14], pp[6])
         
+        if self.Fe_uv_op == True and self.Fe_verner09 == False:
+            f_Fe_all = f_Fe_MgII+f_Fe_Balmer
+        elif self.Fe_uv_op == True and self.Fe_verner09 == True:
+            f_Fe_all = f_Fe_verner
+        
         if self.Fe_uv_op == True and self.poly == False and self.BC == False:
-            yval = f_pl+f_Fe_MgII+f_Fe_Balmer
+            yval = f_pl+f_Fe_all
         elif self.Fe_uv_op == True and self.poly == True and self.BC == False:
-            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_poly
+            yval = f_pl+f_Fe_all+f_poly
         elif self.Fe_uv_op == True and self.poly == False and self.BC == True:
-            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_conti_BC
+            yval = f_pl+f_Fe_all+f_conti_BC
         elif self.Fe_uv_op == False and self.poly == True and self.BC == False:
             yval = f_pl+f_poly
         elif self.Fe_uv_op == False and self.poly == False and self.BC == False:
@@ -531,7 +544,7 @@ class QSOFitNew(QSOFit):
         elif self.Fe_uv_op == False and self.poly == False and self.BC == True:
             yval = f_pl+f_conti_BC
         elif self.Fe_uv_op == True and self.poly == True and self.BC == True:
-            yval = f_pl+f_Fe_MgII+f_Fe_Balmer+f_poly+f_conti_BC
+            yval = f_pl+f_Fe_all+f_poly+f_conti_BC
         elif self.Fe_uv_op == False and self.poly == True and self.BC == True:
             yval = f_pl+f_Fe_Balmer+f_poly+f_conti_BC
         else:
@@ -613,6 +626,35 @@ class QSOFitNew(QSOFit):
         return yval
 
 
+    def Fe_flux_verner(self, xval, pp):
+        "Fit the FeII on the continuum from 2000 to 12000 A based on Verner et al. (2009)"
+        fe_verner = self.fe_verner
+        yval = np.zeros_like(xval)
+        wave_Fe = fe_verner[:, 0]
+        flux_Fe = fe_verner[:, 1]*8e-7
+        ind = np.where((wave_Fe > 2000.) & (wave_Fe < 12000.), True, False)
+        wave_Fe = wave_Fe[ind]
+        flux_Fe = flux_Fe[ind]
+        Fe_FWHM = pp[1]
+        xval_new = xval*(1.0+pp[2])
+        ind = np.where((xval_new > 2000.) & (xval_new < 12000.), True, False)
+        if np.sum(ind) > 100:
+            if Fe_FWHM < 900.0:
+                sig_conv = np.sqrt(910.0**2-900.0**2)/2./np.sqrt(2.*np.log(2.))
+            else:
+                sig_conv = np.sqrt(Fe_FWHM**2-900.0**2)/2./np.sqrt(2.*np.log(2.))  # in km/s
+            # Get sigma in pixel space
+            sig_pix = sig_conv/106.3  # 106.3 km/s is the dispersion for the BG92 FeII template
+            khalfsz = np.round(4*sig_pix+1, 0)
+            xx = np.arange(0, khalfsz*2, 1)-khalfsz
+            kernel = np.exp(-xx**2/(2*sig_pix**2))
+            kernel = kernel/np.sum(kernel)
+            flux_Fe_conv = np.convolve(flux_Fe, kernel, 'same')
+            tck = interpolate.splrep(wave_Fe, flux_Fe_conv)
+            yval[ind] = pp[0]*interpolate.splev(xval_new[ind], tck)
+        return yval
+
+
     def Balmer_conti(self, xval, pp):
         """Fit the Balmer continuum from the model of Dietrich+02"""
         # xval = input wavelength, in units of A
@@ -633,7 +675,7 @@ class QSOFitNew(QSOFit):
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
-            broken_pl=False, Fe_uv_op=True,
+            broken_pl=False, Fe_uv_op=True, Fe_verner09=False,
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=dustmap_path, 
@@ -652,10 +694,13 @@ class QSOFitNew(QSOFit):
             print("Bad figure name!")
         if self.z > 2.5:
             poly = False
+        if Fe_verner09 == True:
+            Fe_uv_op=True
         return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
                            deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
                            decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
-                           npca_qso=npca_qso, Fe_uv_op=Fe_uv_op, Fe_flux_range=Fe_flux_range, poly=poly, 
+                           npca_qso=npca_qso, Fe_uv_op=Fe_uv_op, Fe_verner09=Fe_verner09,
+                           Fe_flux_range=Fe_flux_range, poly=poly, 
                            BC=BC, rej_abs=rej_abs, initial_guess=initial_guess, MC=MC, n_trails=n_trails, 
                            linefit=linefit, tie_lambda=tie_lambda, tie_width=tie_width, tie_flux_1=tie_flux_1, 
                            tie_flux_2=tie_flux_2, save_result=save_result, plot_fig=plot_fig, 
@@ -1475,3 +1520,5 @@ class QSOFitNew(QSOFit):
     def CalFWHM(self, logsigma):
         """transfer the logFWHM to normal frame"""
         return 2*np.sqrt(2*np.log(2))*(np.exp(logsigma)-1)*ac.c.to(u.Unit('km/s')).value
+
+
