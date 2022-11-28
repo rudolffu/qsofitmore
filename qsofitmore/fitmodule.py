@@ -716,7 +716,7 @@ class QSOFitNew(QSOFit):
         bbflux = bb_lam(xval).value*3.14   # in units of ergs/cm2/s/A
         tau = pp[2]*(xval.value/lambda_BE)**3
         result = pp[0] * bbflux * (1 - np.exp(-tau))
-        ind = ((xval.value < 2000) | (xval.value > 4000))
+        ind = ((xval.value < 2100) | (xval.value > 3800))
         # ind = np.where(xval.value > lambda_BE, True, False)
         if ind.any() == True:
             result[ind] = 0
