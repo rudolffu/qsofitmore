@@ -710,18 +710,15 @@ class QSOFitNew(QSOFit):
         """Fit the Balmer continuum from the model of Dietrich+02"""
         # xval = input wavelength, in units of A
         # pp=[norm, Te, tau_BE] -- in units of [--, K, --]
-        
+        xval=xval*u.AA
         lambda_BE = 3646.  # A
-        if version.parse(astropy.__version__) < version.parse("4.3.0"):
-            bbflux = blackbody_lambda(xval, pp[1]).value*3.14  # in units of ergs/cm2/s/A
-        else:
-            bb_lam = BlackBody(pp[1] * u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
-            bbflux = bbflux = bb_lam(xval).value*3.14
-        tau = pp[2]*(xval/lambda_BE)**3
-        result = pp[0]*bbflux*(1.-np.exp(-tau))
-        ind = np.where(xval > lambda_BE, True, False)
+        bb_lam = BlackBody(pp[1]*u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
+        bbflux = bb_lam(xval).value*3.14   # in units of ergs/cm2/s/A
+        tau = pp[2]*(xval.value/lambda_BE)**3
+        result = pp[0] * bbflux * (1 - np.exp(-tau))
+        ind = np.where(xval.value > lambda_BE, True, False)
         if ind.any() == True:
-            result[ind] = 0.
+            result[ind] = 0
         return result
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
