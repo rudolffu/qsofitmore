@@ -92,6 +92,57 @@ class QSOFitNew(QSOFit):
         self.path = path    
         self.is_sdss = is_sdss
 
+
+    @classmethod
+    def fromsdss(cls, fname, redshift=None, path=None, plateid=None, mjd=None, fiberid=None, 
+                 ra=None, dec=None, telescope=None):
+        """
+        Initialize QSOFit object from a SDSS spectrum fits file.
+        Parameters:
+        ----------
+            fname : str
+                name of the fits file.
+            redshift : float
+                redshift of the spectrum. Should be provided if not recorded in the fits header.
+            path : str
+                working directory.
+        Returns:
+        ----------
+            cls : class
+                A QSOFitNew object.
+        Other parameters:
+        ----------
+            plateid, mjd, and fiberid: int
+                Default None for non-SDSS spectra.
+        Example:
+        ----------
+        q = QSOFitNew.fromsdss("custom_iraf_spectrum.fits", path=path)
+        """
+        hdu = fits.open(fname)
+        hdr = hdu[0].header
+        ra=hdr['plug_ra']          # RA 
+        dec=hdr['plug_dec']        # DEC
+        plateid = hdr['plateid']   # SDSS plate ID
+        mjd = hdr['mjd']           # SDSS MJD
+        fiberid = hdr['fiberid']   # SDSS fiber ID
+        if redshift is None:
+            try: 
+                redshift = hdu[2].data['z'][0]
+            except:
+                print('Redshift not provided.')
+                pass
+        data = hdu[1].data
+        hdu.close()
+        wave = 10**data['loglam']
+        flux = data['flux'] 
+        ivar = pd.Series(data['ivar'])
+        ivar.replace(0, np.nan, inplace=True)
+        ivar_safe = ivar.interpolate()
+        err = 1./np.sqrt(ivar_safe.values)   
+        return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, plateid=plateid, 
+                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=True)
+
+
     @classmethod
     def fromiraf(cls, fname, redshift=None, path=None, plateid=None, mjd=None, fiberid=None, 
                  ra=None, dec=None, telescope=None):
