@@ -377,11 +377,14 @@ class QSOFitNew(QSOFit):
         self.fe_uv = np.genfromtxt(datapath+'fe_uv.txt')
         self.fe_op = np.genfromtxt(datapath+'fe_optical.txt')
         self.fe_verner = np.genfromtxt(new_datapath+'Fe_Verner.txt')
+        self.df_balmer_series = pd.read_csv(new_datapath+'balmer_n6_n50_em_NE10.csv')
         
         # do continuum fit--------------------------
         window_all = np.array(
             [[1150., 1170.], [1275., 1290.], [1350., 1360.], [1445., 1465.], [1690., 1705.], [1770., 1810.],
-             [1970., 2400.], [2480., 2675.], [2925., 3400.], [3775., 3832.], [4000., 4050.], [4200., 4230.],
+             [1970., 2400.], [2480., 2675.], [2925., 3400.], [3500., 3600.], [3600., 4260.],
+            #  [3775., 3832.], [3833., 3860.], [3890., 3960.],
+            #  [4000., 4090.], [4115., 4260.],
              [4435., 4640.], [5100., 5535.], [6005., 6035.], [6110., 6250.], [6800., 7000.], [7160., 7180.],
              [7500., 7800.], [8050., 8150.], ])
         
@@ -399,20 +402,22 @@ class QSOFitNew(QSOFit):
         if self.initial_guess is not None:
             pp0 = self.initial_guess
         else:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0.])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0.5, 0., 0., 0.])
         if self.broken_pl == True:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 15000., 0.5, 0., 0., 0., -0.35])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0.5, 0., 0., 0., -0.35])
         conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
         tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
-                       {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, {'limits': (0., 10.**10)},
-                       {'limits': (10000., 50000.)}, {'limits': (0.1, 2.)}, None, None, None, ]
+                       {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, 
+                       {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0.1, 2.)}, 
+                       None, None, None, ]
         if self.broken_pl == True:
             conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
             tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                            {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
-                           {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, {'limits': (0., 10.**10)},
-                           {'limits': (10000., 50000.)}, {'limits': (0.1, 2.)}, None, None, None, 
+                           {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, 
+                           {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0.1, 2.)}, 
+                           None, None, None, 
                            {'limits': (-5., 3.)},]
         conti_fit.parinfo = tmp_parinfo
         conti_fit.fit(params0=pp0)
@@ -709,18 +714,54 @@ class QSOFitNew(QSOFit):
     def Balmer_conti(self, xval, pp):
         """Fit the Balmer continuum from the model of Dietrich+02"""
         # xval = input wavelength, in units of A
-        # pp=[norm, Te, tau_BE] -- in units of [--, K, --]
+        # pp=[norm, Te, norm_high] -- in units of [--, K, --]
         xval=xval*u.AA
+        xx = xval.value
         lambda_BE = 3646.  # A
-        bb_lam = BlackBody(pp[1]*u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
+        Te = 1.5e4
+        tau_BE = 1.
+        bb_lam = BlackBody(Te*u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
         bbflux = bb_lam(xval).value*3.14   # in units of ergs/cm2/s/A
-        tau = pp[2]*(xval.value/lambda_BE)**3
-        result = pp[0] * bbflux * (1 - np.exp(-tau))
-        ind = ((xval.value < 2000) | (xval.value > 3800))
+        tau = tau_BE * (xval.value/lambda_BE)**3
+        y_BaC = pp[0] * bbflux * (1 - np.exp(-tau))
+        ind = ((xval.value < 2000) | (xval.value > lambda_BE))
         # ind = np.where(xval.value > lambda_BE, True, False)
         if ind.any() == True:
-            result[ind] = 0
-        return result
+            y_BaC[ind] = 0
+        df = self.df_balmer_series
+        y = np.zeros_like(xx)
+        wave_bs = df.wave.values
+        flux_bs = df.flux_norm.values
+        fwhm = pp[1]
+        for i in range(len(wave_bs)):
+            s = (fwhm / 3e5) * wave_bs[i] / 2 / np.sqrt(2*np.log(2))
+            exp = ((xx-wave_bs[i]) / s)**2. / 2.
+            y += flux_bs[i] * np.exp( -exp ) / s
+        idx_an1 = ((xx > 3630.) & (xx < 3646.))
+        idx_an2 = ((xx > 3780.) & (xx < 3810.))
+        idx_pivot = ((xx >= 3646.) & (xx <= 3780.))
+        idx_pivot_left = (xx < 3646.)
+        idx_pivot_right = (xx > 3780.)
+        if ((len(y_BaC[idx_an1])==0)|(len(y[idx_an2])==0)):
+            ratio_br = 0
+            y_scaled = y * ratio_br * pp[2]
+            newdata = y_BaC + y_scaled
+        elif y_BaC[idx_an1][-1] * y[idx_an2][0] > 0:
+            ratio_br = np.nanmedian(y_BaC[idx_an1])/np.nanmedian(y[idx_an2])
+            y_scaled = y * ratio_br * pp[2]
+            bridge_wave = np.concatenate([xx[idx_an1], xx[idx_an2]])
+            bridge_flux = np.concatenate([y_BaC[idx_an1], y_scaled[idx_an2]])
+            f_interp = interpolate.interp1d(bridge_wave, bridge_flux)
+            yi = f_interp(xx[idx_pivot])
+            newdata = np.zeros_like(xx)
+            newdata[idx_pivot_left] = y_BaC[idx_pivot_left]
+            newdata[idx_pivot_right] = y_scaled[idx_pivot_right]
+            newdata[idx_pivot] = yi
+        else:
+            ratio_br = 0
+            y_scaled = y * ratio_br * pp[2]
+            newdata = y_BaC + y_scaled
+        return newdata
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
