@@ -377,7 +377,18 @@ class QSOFitNew(QSOFit):
         self.fe_uv = np.genfromtxt(datapath+'fe_uv.txt')
         self.fe_op = np.genfromtxt(datapath+'fe_optical.txt')
         self.fe_verner = np.genfromtxt(new_datapath+'Fe_Verner.txt')
-        self.df_balmer_series = pd.read_csv(new_datapath+'balmer_n6_n50_em_NE10.csv')
+        if self.BC == True:
+            try:
+                print("N_e = 1E{}.".format(self.ne))
+            except AttributeError:
+                print('N_e for Balmer line series not set.\nSetting N_e = 1E09. (q.set_log10_electron_density(9))')
+                ne = 9
+                self.ne = ne
+            if self.ne == 9:
+                balmer_file = new_datapath+'balmer_n6_n50_em_NE09.csv'
+            elif self.ne == 10:
+                balmer_file = new_datapath+'balmer_n6_n50_em_NE10.csv'
+            self.df_balmer_series = pd.read_csv(balmer_file)
         
         # do continuum fit--------------------------
         window_all = np.array(
@@ -402,21 +413,21 @@ class QSOFitNew(QSOFit):
         if self.initial_guess is not None:
             pp0 = self.initial_guess
         else:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0.5, 0., 0., 0.])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0.])
         if self.broken_pl == True:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0.5, 0., 0., 0., -0.35])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0., -0.35])
         conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
         tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, 
-                       {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0.1, 2.)}, 
+                       {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0., 10.**10)}, 
                        None, None, None, ]
         if self.broken_pl == True:
             conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
             tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                            {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                            {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, 
-                           {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0.1, 2.)}, 
+                           {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0., 10.**10)}, 
                            None, None, None, 
                            {'limits': (-5., 3.)},]
         conti_fit.parinfo = tmp_parinfo
@@ -481,8 +492,8 @@ class QSOFitNew(QSOFit):
                 ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_norm_err',
                  'Fe_uv_FWHM', 'Fe_uv_FWHM_err', 'Fe_uv_shift', 'Fe_uv_shift_err', 'Fe_op_norm', 'Fe_op_norm_err',
                  'Fe_op_FWHM', 'Fe_op_FWHM_err', 'Fe_op_shift', 'Fe_op_shift_err', 'PL_norm', 'PL_norm_err', 'PL_slope',
-                 'PL_slope_err', 'Blamer_norm', 'Blamer_norm_err', 'Balmer_Te', 'Balmer_Te_err', 'Balmer_Tau',
-                 'Balmer_Tau_err', 'POLY_a', 'POLY_a_err', 'POLY_b', 'POLY_b_err', 'POLY_c', 'POLY_c_err', 'L1350',
+                 'PL_slope_err', 'BalmerC_norm', 'BalmerC_norm_err', 'BalmerS_FWHM', 'BalmerS_FWHM_err', 'BalmerS_norm',
+                 'BalmerS_norm_err', 'POLY_a', 'POLY_a_err', 'POLY_b', 'POLY_b_err', 'POLY_c', 'POLY_c_err', 'L1350',
                  'L1350_err', 'L3000', 'L3000_err', 'L5100', 'L5100_err'])
             if self.broken_pl == True:
                 self.conti_result = np.concatenate((self.conti_result, 
@@ -512,8 +523,8 @@ class QSOFitNew(QSOFit):
                  'float'])
             self.conti_result_name = np.array(
                 ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
-                 'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'Blamer_norm',
-                 'Balmer_Te', 'Balmer_Tau_e', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
+                 'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'BalmerC_norm',
+                 'BalmerS_FWHM', 'BalmerS_norm', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
             if self.broken_pl == True:
                 self.conti_result = np.concatenate((self.conti_result, 
                                                     conti_fit.params[14]), axis=None)
@@ -535,7 +546,7 @@ class QSOFitNew(QSOFit):
         f_pl_model = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]
         if self.broken_pl == True:
             f_pl_model = broken_pl_model(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
-        f_bc_model = self.Balmer_conti(wave, conti_fit.params[8:11])
+        f_bc_model = self.Balmer_conti(wave, conti_fit.params[8]) + self.Balmer_high_order(wave, conti_fit.params[9:11])
         f_poly_model = self.F_poly_conti(wave, conti_fit.params[11:14])
         if self.Fe_verner09 == True:
             f_conti_model = (f_pl_model+f_fe_verner_model+f_poly_model+f_bc_model)
@@ -576,7 +587,7 @@ class QSOFitNew(QSOFit):
         # power-law continuum
         f_pl = pp[6]*(xval/3000.0)**pp[7]
         # Balmer continuum
-        f_conti_BC = self.Balmer_conti(xval, pp[8:11])
+        f_conti_BC = self.Balmer_conti(xval, pp[8]) + self.Balmer_high_order(xval, pp[9:11])
         # polynormal conponent for reddened spectra
         f_poly = self.F_poly_conti(xval, pp[11:14])
         if self.broken_pl == True:
@@ -714,54 +725,68 @@ class QSOFitNew(QSOFit):
     def Balmer_conti(self, xval, pp):
         """Fit the Balmer continuum from the model of Dietrich+02"""
         # xval = input wavelength, in units of A
-        # pp=[norm, Te, norm_high] -- in units of [--, K, --]
+        # pp=norm 
         xval=xval*u.AA
-        xx = xval.value
         lambda_BE = 3646.  # A
         Te = 1.5e4
         tau_BE = 1.
         bb_lam = BlackBody(Te*u.K, scale=1.0 * u.erg / (u.cm ** 2 * u.AA * u.s * u.sr))
         bbflux = bb_lam(xval).value*3.14   # in units of ergs/cm2/s/A
         tau = tau_BE * (xval.value/lambda_BE)**3
-        y_BaC = pp[0] * bbflux * (1 - np.exp(-tau))
+        y_BaC = pp * bbflux * (1 - np.exp(-tau))
         ind = ((xval.value < 2000) | (xval.value > lambda_BE))
         # ind = np.where(xval.value > lambda_BE, True, False)
         if ind.any() == True:
             y_BaC[ind] = 0
+        return y_BaC
+
+
+    def set_log10_electron_density(self, ne):
+        """
+        Parameters:
+            ne : int / float
+                log10 electron number density for Balmer line series. 
+                Currently only support 9 or 10.
+        """
+        self.ne = ne
+
+
+    def set_Balmer_fwhm(self, fwhm=None):
+        """
+        Parameters:
+            fwhm : float
+                FWHM of Balmer line series in km/s.
+        """
+        self.Balmer_fwhm = fwhm
+
+
+    def Balmer_high_order(self, xval, pp):
+        xx = xval
         df = self.df_balmer_series
         y = np.zeros_like(xx)
         wave_bs = df.wave.values
         flux_bs = df.flux_norm.values
-        fwhm = pp[1]
+        try:
+            fwhm = self.Balmer_fwhm
+            self.conti_fit.params[9] = fwhm
+        except AttributeError:
+            fwhm = pp[0]
         for i in range(len(wave_bs)):
             s = (fwhm / 3e5) * wave_bs[i] / 2 / np.sqrt(2*np.log(2))
             exp = ((xx-wave_bs[i]) / s)**2. / 2.
             y += flux_bs[i] * np.exp( -exp ) / s
-        idx_an1 = ((xx > 3630.) & (xx < 3646.))
-        idx_an2 = ((xx > 3780.) & (xx < 3810.))
-        idx_pivot = ((xx >= 3646.) & (xx <= 3780.))
-        idx_pivot_left = (xx < 3646.)
-        idx_pivot_right = (xx > 3780.)
-        if ((len(y_BaC[idx_an1])==0)|(len(y[idx_an2])==0)):
-            ratio_br = 0
-            y_scaled = y * ratio_br * pp[2]
-            newdata = y_BaC + y_scaled
-        elif y_BaC[idx_an1][-1] * y[idx_an2][0] > 0:
-            ratio_br = np.nanmedian(y_BaC[idx_an1])/np.nanmedian(y[idx_an2])
-            y_scaled = y * ratio_br * pp[2]
-            bridge_wave = np.concatenate([xx[idx_an1], xx[idx_an2]])
-            bridge_flux = np.concatenate([y_BaC[idx_an1], y_scaled[idx_an2]])
-            f_interp = interpolate.interp1d(bridge_wave, bridge_flux)
-            yi = f_interp(xx[idx_pivot])
-            newdata = np.zeros_like(xx)
-            newdata[idx_pivot_left] = y_BaC[idx_pivot_left]
-            newdata[idx_pivot_right] = y_scaled[idx_pivot_right]
-            newdata[idx_pivot] = yi
-        else:
-            ratio_br = 0
-            y_scaled = y * ratio_br * pp[2]
-            newdata = y_BaC + y_scaled
-        return newdata
+        ind = ((xx < 3760.) & (xx > 3646.))
+        ind1 = (xx < 3646.)
+        ind2 = (xx >= 3760.)
+        if ((len(y[ind]) != 0) & (len(y[ind2]) != 0)):
+            ind_ref = ((xx > 3760.) & (xx < 3850.))
+            f_interp = interpolate.interp1d(xx[ind_ref], y[ind_ref], fill_value='extrapolate')
+            yi = f_interp(xx[ind])
+            y[ind] = yi
+            y[ind1] = 0.
+        y_scaled = y * pp[1]
+        return y_scaled
+
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
@@ -1490,7 +1515,7 @@ class QSOFitNew(QSOFit):
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
             contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
-                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
+                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
                     self.wave, 
@@ -1567,7 +1592,7 @@ class QSOFitNew(QSOFit):
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
             contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
-                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8:11])            
+                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
                     self.wave, 
