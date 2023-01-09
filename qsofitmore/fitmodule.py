@@ -389,6 +389,8 @@ class QSOFitNew(QSOFit):
             elif self.ne == 10:
                 balmer_file = new_datapath+'balmer_n6_n50_em_NE10.csv'
             self.df_balmer_series = pd.read_csv(balmer_file)
+        else:
+            self.df_balmer_series = pd.read_csv(new_datapath+'balmer_n6_n50_em_NE09.csv')
         
         # do continuum fit--------------------------
         window_all = np.array(
@@ -460,20 +462,26 @@ class QSOFitNew(QSOFit):
         
         # calculate continuum luminoisty
         L = self._L_conti(wave, conti_fit.params)
-        
-        # calculate FeII flux
-        Fe_flux_result = np.array([])
-        Fe_flux_type = np.array([])
-        Fe_flux_name = np.array([])
         if self.Fe_flux_range is not None:
-            Fe_flux_result, Fe_flux_type, Fe_flux_name = self.Get_Fe_flux(self.Fe_flux_range, conti_fit.params[:6])
-        
+            end_pts = np.array(self.Fe_flux_range).flatten()
+            n_fe_ranges = end_pts.shape[0]//2
+            Fe_wave_keys = []
+            Fe_range_list = []
+            for i in range(n_fe_ranges):
+                range_low = end_pts[2*i]
+                range_high = end_pts[2*i+1]
+                key = "w{}_w{}".format(int(range_low), int(range_high))
+                Fe_wave_keys.append(key)
+                Fe_range_list.append([range_low, range_high])
+            self.Fe_wave_keys = Fe_wave_keys
+            self.Fe_range_list = Fe_range_list
+
         # get conti result -----------------------------
         if self.MC == True and self.n_trails > 0:
             # calculate MC err
-            conti_para_std, all_L_std, Fe_flux_std = self._conti_mc(self.wave[tmp_all], self.flux[tmp_all],
-                                                                    self.err[tmp_all], pp0, conti_fit.parinfo,
-                                                                    self.n_trails)
+            conti_para_std, all_L_std = self._conti_mc(self.wave[tmp_all], self.flux[tmp_all],
+                                                       self.err[tmp_all], pp0, conti_fit.parinfo,
+                                                       self.n_trails)
             
             self.conti_result = np.array(
                 [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
@@ -505,11 +513,11 @@ class QSOFitNew(QSOFit):
                 self.conti_result_name = np.concatenate((self.conti_result_name, 
                                                          'PL_slope2', 
                                                          'PL_slope2_err'), axis=None)                                         
-            for iii in range(Fe_flux_result.shape[0]):
-                self.conti_result = np.append(self.conti_result, [Fe_flux_result[iii], Fe_flux_std[iii]])
-                self.conti_result_type = np.append(self.conti_result_type, [Fe_flux_type[iii], Fe_flux_type[iii]])
-                self.conti_result_name = np.append(self.conti_result_name,
-                                                   [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
+            # for iii in range(Fe_flux_result.shape[0]):
+            #     self.conti_result = np.append(self.conti_result, [Fe_flux_result[iii], Fe_flux_std[iii]])
+            #     self.conti_result_type = np.append(self.conti_result_type, [Fe_flux_type[iii], Fe_flux_type[iii]])
+            #     self.conti_result_name = np.append(self.conti_result_name,
+            #                                        [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
         else:
             self.conti_result = np.array(
                 [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
@@ -532,13 +540,20 @@ class QSOFitNew(QSOFit):
                                                          'float'), axis=None)
                 self.conti_result_name = np.concatenate((self.conti_result_name, 
                                                          'PL_slope2'), axis=None)
-            self.conti_result = np.append(self.conti_result, Fe_flux_result)
-            self.conti_result_type = np.append(self.conti_result_type, Fe_flux_type)
-            self.conti_result_name = np.append(self.conti_result_name, Fe_flux_name)
-        
+            # self.conti_result = np.append(self.conti_result, Fe_flux_result)
+            # self.conti_result_type = np.append(self.conti_result_type, Fe_flux_type)
+            # self.conti_result_name = np.append(self.conti_result_name, Fe_flux_name)
+        # 
         self.conti_fit = conti_fit
         self.tmp_all = tmp_all
-        
+        if self.Fe_flux_range is not None:
+            self.cal_Fe_line_res()
+            Fe_line_result = np.array(list(self.Fe_line_result.values()))
+            Fe_line_result_type = np.full_like(Fe_line_result,'float',dtype=object)
+            Fe_line_result_name = np.asarray(list(self.Fe_line_result.keys()))
+            self.conti_result = np.concatenate([self.conti_result, Fe_line_result])
+            self.conti_result_type = np.concatenate([self.conti_result_type, Fe_line_result_type])
+            self.conti_result_name = np.concatenate([self.conti_result_name, Fe_line_result_name])
         # save different models--------------------
         f_fe_mgii_model = self.Fe_flux_mgii(wave, conti_fit.params[0:3])
         f_fe_balmer_model = self.Fe_flux_balmer(wave, conti_fit.params[3:6])
@@ -553,7 +568,7 @@ class QSOFitNew(QSOFit):
         else:
             f_conti_model = (f_pl_model+f_fe_mgii_model+f_fe_balmer_model+f_poly_model+f_bc_model)
         line_flux = flux-f_conti_model
-        
+
         self.f_conti_model = f_conti_model
         self.f_bc_model = f_bc_model
         self.f_fe_uv_model = f_fe_mgii_model
@@ -975,6 +990,84 @@ class QSOFitNew(QSOFit):
         # plt.show()
         # plt.close()
     
+    # ---------MC error for continuum parameters-------------------
+    def _conti_mc(self, x, y, err, pp0, pp_limits, n_trails):
+        """Calculate the continual parameters' Monte carlo errrors"""
+        all_para = np.zeros(len(pp0)*n_trails).reshape(len(pp0), n_trails)
+        all_L = np.zeros(3*n_trails).reshape(3, n_trails)
+        n_Fe_flux = np.array(self.Fe_flux_range).flatten().shape[0]//2
+        all_Fe_flux = np.zeros(n_Fe_flux*n_trails).reshape(n_Fe_flux, n_trails)
+        all_Fe_ew = np.zeros_like(all_Fe_flux)
+        for tra in range(n_trails):
+            flux = y+np.random.randn(len(y))*err
+            conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(x, flux, err), maxiter=50)
+            conti_fit.parinfo = pp_limits
+            conti_fit.fit(params0=pp0)
+            all_para[:, tra] = conti_fit.params
+            all_L[:, tra] = np.asarray(self._L_conti(x, conti_fit.params))
+            if self.Fe_flux_range is not None:
+                for i, wrange in enumerate(self.Fe_range_list):
+                    flux_tmp, ew_tmp = self.Fe_line_prop(conti_fit.params, wrange)
+                    all_Fe_flux[i, tra] = flux_tmp
+                    all_Fe_ew[i, tra] = ew_tmp
+                self.all_Fe_flux = all_Fe_flux
+                self.all_Fe_ew = all_Fe_ew
+        if self.Fe_flux_range is not None:
+            df_fe_flux = pd.DataFrame(all_Fe_flux.T, columns=self.Fe_wave_keys)
+            df_fe_ew = pd.DataFrame(all_Fe_ew.T, columns=self.Fe_wave_keys)
+            self.df_fe_flux = df_fe_flux
+            self.df_fe_ew = df_fe_ew
+        all_para_std = all_para.std(axis=1)
+        all_L_std = all_L.std(axis=1)
+        return all_para_std, all_L_std
+
+    def Fe_line_prop(self, pp, subrange=None):
+        wave = self.wave
+        if subrange is None:
+            subrange = [4435, 4685]
+        f_fe_mgii_model = self.Fe_flux_mgii(wave, pp[0:3])
+        f_fe_balmer_model = self.Fe_flux_balmer(wave, pp[3:6])
+        f_fe_verner_model = self.Fe_flux_verner(wave, pp[3:6])
+        f_pl_model = pp[6]*(wave/3000.0)**pp[7]
+        if self.broken_pl == True:
+            f_pl_model = broken_pl_model(wave, pp[7], pp[14], pp[6])
+        f_bc_model = self.Balmer_conti(wave, pp[8]) + self.Balmer_high_order(wave, pp[9:11])
+        f_poly_model = self.F_poly_conti(wave, pp[11:14])
+        f_conti_no_fe = f_pl_model+f_poly_model+f_bc_model
+        if self.Fe_verner09 == True:
+            f_fe = f_fe_verner_model
+        else:
+            f_fe = f_fe_mgii_model + f_fe_balmer_model 
+        range_low = subrange[0]
+        range_high = subrange[1]
+        ind = ((wave <= range_high) & (wave >= range_low))
+        wave_in = wave[ind]
+        contiflux = f_conti_no_fe[ind]
+        Fe_flux = integrate.trapz(f_fe[ind], wave_in)
+        Fe_ew = integrate.trapz(f_fe[ind]/contiflux, wave_in)
+        return Fe_flux, Fe_ew
+
+    def cal_Fe_line_res(self):
+        Fe_line_result = {}
+        keys = self.Fe_wave_keys
+        print(repr(keys))
+        for i, key in enumerate(keys):
+            pp=self.conti_fit.params
+            subrange=self.Fe_range_list[i]
+            res = self.Fe_line_prop(pp=pp, subrange=subrange)
+            res_name_flux = 'Fe_{}_flux'.format(key)
+            res_name_ew = 'Fe_{}_ew'.format(key)
+            Fe_line_result.update({res_name_flux:res[0]})
+            Fe_line_result.update({res_name_ew:res[1]})
+        if self.MC == True:
+            for i, key in enumerate(keys):
+                err_name_flux = 'Fe_{}_flux_err'.format(key)
+                err_tmp_flux = self.df_fe_flux[key].std()
+                err_name_ew = 'Fe_{}_ew_err'.format(key)
+                err_tmp_ew = self.df_fe_ew[key].std()
+                Fe_line_result.update({err_name_flux:err_tmp_flux})
+                Fe_line_result.update({err_name_ew:err_tmp_ew})            
+        self.Fe_line_result = Fe_line_result
 
     # line function-----------
     def _DoLineFit(self, wave, line_flux, err, f):
