@@ -903,11 +903,11 @@ class QSOFitNew(QSOFit):
                 axn[1][c].plot(wave, self.line_flux, 'k', zorder=0)
                 
                 axn[1][c].set_xlim(all_comp_range[2*c:2*c+2])
-                f_max = line_flux[
-                    np.where((wave > all_comp_range[2*c]) & (wave < all_comp_range[2*c+1]), True, False)].max()
-                f_min = line_flux[
-                    np.where((wave > all_comp_range[2*c]) & (wave < all_comp_range[2*c+1]), True, False)].min()
-                axn[1][c].set_ylim(f_min*0.9, f_max*1.1)
+                line_flux_c = line_flux[
+                    np.where((wave > all_comp_range[2*c]) & (wave < all_comp_range[2*c+1]), True, False)]
+                f_max = line_flux_c.max()
+                f_min = line_flux_c.min()
+                axn[1][c].set_ylim(-0.1*f_max, f_max*1.1)
                 axn[1][c].set_xticks([all_comp_range[2*c], np.round((all_comp_range[2*c]+all_comp_range[2*c+1])/2, -1),
                                       all_comp_range[2*c+1]])
                 axn[1][c].text(0.02, 0.9, tname, fontsize=20, transform=axn[1][c].transAxes)
