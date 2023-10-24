@@ -34,7 +34,7 @@ Assuming you have anaconda installed, the following steps demonstrate how to ins
 Install [kapteyn](https://www.astro.rug.nl/software/kapteyn/):  
 ```
 # From kapteyn website
-pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.0.tar.gz
+pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
 ```
 
 After installing the dependencies, download and set up the `qsofitmore` package.
