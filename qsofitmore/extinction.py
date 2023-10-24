@@ -64,7 +64,11 @@ def getebv(ra, dec, mapname='planck', mode=None):
             mapname == 'sfd'. When 'local', query the local map 
             on disk. When 'web', query the web server.  
             Default: 'local'.
-        """
+    Returns:
+    -------
+        ebv : float
+            E(B-V) in magnitude.
+    """
     coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
     if mapname.lower()=='planck':
         from dustmaps.planck import PlanckQuery
