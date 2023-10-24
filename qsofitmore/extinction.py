@@ -54,11 +54,11 @@ def getebv(ra, dec, mapname='planck', mode=None):
     Parameters:
     ----------
         mapname : str
-            One of ['sfd', 'planck']. Other maps are 
-            avaliable in "dustmaps" but not implemented here: 
+            One of ['sfd', 'planck', 'planck14', 'planck16']. 
+            Other maps are avaliable in "dustmaps" but not implemented here: 
             ['bayestar', 'iphas', 'marshall', chen2014',  
             'lenz2017', 'pg2010', 'leike_ensslin_2019', 'leike2020']
-            Default: 'planck'.
+            Default: 'planck' (equivalent to 'planck16').
         mode : str
             One of ['local', 'web']. Applicable only when
             mapname == 'sfd'. When 'local', query the local map 
@@ -70,7 +70,11 @@ def getebv(ra, dec, mapname='planck', mode=None):
             E(B-V) in magnitude.
     """
     coord = SkyCoord(ra=ra*u.deg, dec=dec*u.deg, frame='icrs')
-    if mapname.lower()=='planck':
+    if mapname.lower()=='planck' or mapname.lower()=='planck16':
+        from dustmaps.planck import PlanckGNILCQuery
+        planck = PlanckGNILCQuery()
+        ebv = planck(coord)
+    elif mapname.lower()=='planck14':
         from dustmaps.planck import PlanckQuery
         planck = PlanckQuery()
         ebv = planck(coord)
