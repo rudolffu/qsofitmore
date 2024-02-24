@@ -7,7 +7,6 @@ import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.gridspec import GridSpec
-import sfdmap
 from scipy import interpolate
 from scipy import integrate
 from kapteyn import kmpfit
@@ -23,12 +22,8 @@ from .extinction import *
 from .auxmodule import *
 import pkg_resources
 import pandas as pd
-import astropy
-from packaging import version
-if version.parse(astropy.__version__) < version.parse("4.3.0"):
-    from astropy.modeling.blackbody import blackbody_lambda
-else:
-    from astropy.modeling.models import BlackBody
+# from packaging import version
+from astropy.modeling.models import BlackBody
 
 
 datapath = pkg_resources.resource_filename('PyQSOFit', '/')
@@ -335,10 +330,10 @@ class QSOFitNew(QSOFit):
             mapname = 'sfd'
             self.mapname = mapname
         if self.mapname == 'sfd':
-            m = sfdmap.SFDMap(dustmap_path)
+            self.ebv = getebv(self.ra, self.dec, mapname=self.mapname, map_dir=dustmap_path)
             zero_flux = np.where(flux == 0, True, False)
             flux[zero_flux] = 1e-10
-            flux_unred = pyasl.unred(lam, flux, m.ebv(ra, dec))
+            flux_unred = pyasl.unred(lam, flux, self.ebv)
             err_unred = err*flux_unred/flux
             flux_unred[zero_flux] = 0
             del self.flux, self.err
@@ -1353,7 +1348,7 @@ class QSOFitNew(QSOFit):
                     na_all_dict[line]['peak'].append(na_tmp[3])
                     na_all_dict[line]['area'].append(na_tmp[4])
                 except:
-                    print('Mismatch.')
+                    print('Line {} parameters unavailable.'.format(line))
                     pass
                     
         for line in linenames: 

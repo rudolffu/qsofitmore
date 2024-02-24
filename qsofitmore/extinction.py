@@ -47,23 +47,25 @@ def wang2019(wave, ebv, waveunit=u.AA, Rv=3.1):
     return Alam
 
 
-def getebv(ra, dec, mapname='planck', mode=None):
+def getebv(ra, dec, mapname='planck', map_dir=None):
     """
     Query the dust map with "dustmaps" to get the line-of-sight
     E(B-V) value for a given object.
     Parameters:
     ----------
+        ra : float
+            Right ascension in degrees.
+        dec : float
+            Declination in degrees.
         mapname : str
             One of ['sfd', 'planck', 'planck14', 'planck16']. 
             Other maps are avaliable in "dustmaps" but not implemented here: 
             ['bayestar', 'iphas', 'marshall', chen2014',  
             'lenz2017', 'pg2010', 'leike_ensslin_2019', 'leike2020']
             Default: 'planck' (equivalent to 'planck16').
-        mode : str
-            One of ['local', 'web']. Applicable only when
-            mapname == 'sfd'. When 'local', query the local map 
-            on disk. When 'web', query the web server.  
-            Default: 'local'.
+        map_dir : str
+            Path to the directory containing the dust map files. 
+            Default: None.
     Returns:
     -------
         ebv : float
@@ -78,13 +80,9 @@ def getebv(ra, dec, mapname='planck', mode=None):
         from dustmaps.planck import PlanckQuery
         planck = PlanckQuery()
         ebv = planck(coord)
-    elif mapname.lower()=='sfd' and mode=='local':
+    elif mapname.lower()=='sfd':
         from dustmaps.sfd import SFDQuery
-        sfd = SFDQuery()
-        ebv = sfd(coord)
-    elif mapname.lower=='sfd' and mode=='web':
-        from dustmaps.sfd import SFDWebQuery
-        sfd = SFDWebQuery()
+        sfd = SFDQuery(map_dir=map_dir)
         ebv = sfd(coord)
     return ebv
 

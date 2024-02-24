@@ -8,7 +8,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 requirements = [
     "sfdmap",
     "PyAstronomy",
-    "uncertainties"]
+    "uncertainties",
+    "astropy>=4.3"]
 
 setuptools.setup(
     name="qsofitmore", 
