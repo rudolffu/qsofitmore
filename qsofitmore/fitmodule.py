@@ -6,6 +6,7 @@ import warnings
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.gridspec import GridSpec
 import sfdmap
 from scipy import interpolate
 from scipy import integrate
@@ -13,7 +14,6 @@ from kapteyn import kmpfit
 from PyAstronomy import pyasl
 from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
-# from astropy.modeling.blackbody import blackbody_lambda
 from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
@@ -417,7 +417,7 @@ class QSOFitNew(QSOFit):
         else:
             pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0.])
         if self.broken_pl == True:
-            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0., -0.35])
+            pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0., -1.5])
         conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
         tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
@@ -867,9 +867,13 @@ class QSOFitNew(QSOFit):
         matplotlib.rc('ytick', labelsize=20)
         
         if linefit == True:
-            fig, axn = plt.subplots(nrows=2, ncols=np.max([self.ncomp, 1]), figsize=(15, 8),
+            nclos = np.max([self.ncomp, 1])
+            fig, axn = plt.subplots(nrows=2, ncols=nclos, figsize=(15, 8),
                                     squeeze=False)  # prepare for the emission line subplots in the second row
-            ax = plt.subplot(2, 1, 1)  # plot the first subplot occupying the whole first row
+            gs = axn[0, 0].get_gridspec()
+            for axi in axn[0, :]:
+                axi.remove()
+            ax = fig.add_subplot(gs[0, :])
             if self.MC == True:
                 mc_flag = 2
             else:
