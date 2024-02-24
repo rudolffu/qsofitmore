@@ -1348,7 +1348,7 @@ class QSOFitNew(QSOFit):
                     na_all_dict[line]['peak'].append(na_tmp[3])
                     na_all_dict[line]['area'].append(na_tmp[4])
                 except:
-                    print('Line {} parameters unavailable.'.format(line))
+                    warnings.warn('Line {} parameters unavailable.'.format(line))
                     pass
                     
         for line in linenames: 
