@@ -6,7 +6,7 @@ import warnings
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-from matplotlib.gridspec import GridSpec
+# from matplotlib.gridspec import GridSpec
 from scipy import interpolate
 from scipy import integrate
 from kapteyn import kmpfit
@@ -1338,7 +1338,7 @@ class QSOFitNew(QSOFit):
             if 'br' not in line:
                 try:
                     par_ind = np.where(all_line_name==line)[0][0]*3
-                    linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
+                    linecenter = float(linelist[linelist['linename']==line]['lambda'][0])
                     na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
                     if na_tmp[0] == 0:
                         na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
@@ -1419,7 +1419,7 @@ class QSOFitNew(QSOFit):
                 if ('br' not in line) and ('whole' not in line):
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
-                        linecenter = np.float(linelist[linelist['linename']==line]['lambda'][0])
+                        linecenter = float(linelist[linelist['linename']==line]['lambda'][0])
                         na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
                         if line_fit.params[par_ind+2] > 0.0017:
                             na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
@@ -1439,7 +1439,7 @@ class QSOFitNew(QSOFit):
                     par_ind2 = np.where(all_line_name==linew)[0][0]*3
                     inds1 = np.concatenate([np.arange(par_ind1, par_ind1+3),
                                             np.arange(par_ind2, par_ind2+3)])
-                    linecenter = np.float(linelist[linelist['linename']==linec]['lambda'][0])
+                    linecenter = float(linelist[linelist['linename']==linec]['lambda'][0])
                     na_tmp = self.comb_line_prop(linecenter, line_fit.params[inds1])
                     na_all_dict[line]['fwhm'].append(na_tmp[0])
                     na_all_dict[line]['sigma'].append(na_tmp[1])
@@ -1499,10 +1499,10 @@ class QSOFitNew(QSOFit):
                     # na_line_result.update({res_name_tmp:res_tmp})
                     na_line_result.update({err_name_tmp:err_tmp})
             for line in keys:
-                linecenter = np.float(linelist[linelist['linename']==line]['lambda'].item())
-                line_scale = np.float(df_gauss[line+'_1_scale'])
-                line_centerwave = np.float(df_gauss[line+'_1_centerwave'])
-                line_sigma = np.float(df_gauss[line+'_1_sigma'])
+                linecenter = float(linelist[linelist['linename']==line]['lambda'].item())
+                line_scale = float(df_gauss[line+'_1_scale'])
+                line_centerwave = float(df_gauss[line+'_1_centerwave'])
+                line_sigma = float(df_gauss[line+'_1_sigma'])
                 line_param = np.array([line_scale,line_centerwave,line_sigma])
                 na_tmp = self.line_prop(linecenter, line_param, 'narrow')
                 if line_sigma > 0.0017:
@@ -1523,13 +1523,13 @@ class QSOFitNew(QSOFit):
                 for i, comp_tmp in enumerate(['OIII4959_whole', 'OIII5007_whole']):
                     linec = comp_tmp.split('_')[0]
                     linew = linec+'w'
-                    linecenter = np.float(linelist[linelist['linename']==linec]['lambda'].item())
-                    line_scale1 = np.float(df_gauss[linec+'_1_scale'])
-                    line_centerwave1 = np.float(df_gauss[linec+'_1_centerwave'])
-                    line_sigma1 = np.float(df_gauss[linec+'_1_sigma'])
-                    line_scale2 = np.float(df_gauss[linew+'_1_scale'])
-                    line_centerwave2 = np.float(df_gauss[linew+'_1_centerwave'])
-                    line_sigma2 = np.float(df_gauss[linew+'_1_sigma'])
+                    linecenter = float(linelist[linelist['linename']==linec]['lambda'].item())
+                    line_scale1 = float(df_gauss[linec+'_1_scale'])
+                    line_centerwave1 = float(df_gauss[linec+'_1_centerwave'])
+                    line_sigma1 = float(df_gauss[linec+'_1_sigma'])
+                    line_scale2 = float(df_gauss[linew+'_1_scale'])
+                    line_centerwave2 = float(df_gauss[linew+'_1_centerwave'])
+                    line_sigma2 = float(df_gauss[linew+'_1_sigma'])
                     line_param = np.array([line_scale1,line_centerwave1,line_sigma1,
                                            line_scale2,line_centerwave2,line_sigma2])
                     na_tmp = self.comb_line_prop(linecenter, line_param)
