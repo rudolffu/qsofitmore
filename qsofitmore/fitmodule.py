@@ -1023,7 +1023,7 @@ class QSOFitNew(QSOFit):
     def Fe_line_prop(self, pp, subrange=None):
         wave = self.wave
         if subrange is None:
-            subrange = [4435, 4685]
+            subrange = [4434, 4684]
         f_fe_mgii_model = self.Fe_flux_mgii(wave, pp[0:3])
         f_fe_balmer_model = self.Fe_flux_balmer(wave, pp[3:6])
         f_fe_verner_model = self.Fe_flux_verner(wave, pp[3:6])
