@@ -1,12 +1,10 @@
 #!/usr/bin/env python
-# from os import name
 import sys
 import glob
 import warnings
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
-# from matplotlib.gridspec import GridSpec
 from scipy import interpolate
 from scipy import integrate
 from kapteyn import kmpfit
@@ -17,17 +15,15 @@ from astropy.table import Table
 from astropy.coordinates import SkyCoord
 from astropy import units as u
 from astropy import constants as ac
-from PyQSOFit import QSOFit
 from .extinction import *
 from .auxmodule import *
 import pkg_resources
 import pandas as pd
-# from packaging import version
 from astropy.modeling.models import BlackBody
 
-
-datapath = pkg_resources.resource_filename('PyQSOFit', '/')
-dustmap_path = pkg_resources.resource_filename('PyQSOFit', '/sfddata/')
+# Update resource paths
+datapath = pkg_resources.resource_filename('qsofitmore', '/data/')
+dustmap_path = pkg_resources.resource_filename('qsofitmore', '/sfddata/')
 new_datapath = pkg_resources.resource_filename('qsofitmore', '/ext_data/')
 
 __all__ = ['QSOFitNew']
@@ -35,12 +31,11 @@ __all__ = ['QSOFitNew']
 getnonzeroarr = lambda x: x[x != 0]
 sciplotstyle()
 
-class QSOFitNew(QSOFit):
-
-    def __init__(self, lam, flux, err, z, ra=- 999., dec=-999., name=None, plateid=None, mjd=None, fiberid=None, 
-                 path=None, and_mask=None, or_mask=None, is_sdss=True):
+class QSOFitNew:
+    def __init__(self, lam, flux, err, z, ra=0, dec=0, name=None, plateid=None, mjd=None, fiberid=None, 
+                 path=None, and_mask=None, or_mask=None, is_sdss=False):
         """
-        Get the input data perpared for the QSO spectral fitting
+        Get the input data prepared for the QSO spectral fitting
         
         Parameters:
         -----------
@@ -62,7 +57,7 @@ class QSOFitNew(QSOFit):
             name of the object
         
         plateid, mjd, fiberid: integer number, optional
-            If the source is SDSS object, they have the plate ID, MJD and Fiber ID in their file herader.
+            If the source is SDSS object, they have the plate ID, MJD and Fiber ID in their file header.
             
         path: str
             the path of the input data
@@ -74,7 +69,7 @@ class QSOFitNew(QSOFit):
         self.lam = np.asarray(lam, dtype=np.float64)
         self.flux = np.asarray(flux, dtype=np.float64)
         self.err = np.asarray(err, dtype=np.float64)
-        self.sn_obs = self.flux/self.err
+        self.sn_obs = self.flux / self.err
         self.z = z
         self.and_mask = and_mask
         self.or_mask = or_mask
@@ -82,7 +77,7 @@ class QSOFitNew(QSOFit):
         self.dec = dec
         self.name = name
         self.plateid = plateid
-        self.mjd = mjd
+        self.mjd = mjd  
         self.fiberid = fiberid
         self.path = path    
         self.is_sdss = is_sdss
@@ -351,11 +346,6 @@ class QSOFitNew(QSOFit):
             self.flux = flux_unred
             self.err = err_unred           
         return self.flux
-
-
-    def _HostDecompose(self, wave, flux, err, z, Mi, npca_gal, npca_qso, path):
-        path = datapath
-        return super()._HostDecompose(wave, flux, err, z, Mi, npca_gal, npca_qso, path)
 
     
     def _DoContiFit(self, wave, flux, err, ra, dec, plateid, mjd, fiberid):
@@ -807,6 +797,29 @@ class QSOFitNew(QSOFit):
             save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None):
         self.mask_compname = mask_compname
         self.broken_pl = broken_pl
+        self.name = name
+        self.wave_range = wave_range
+        self.wave_mask = wave_mask
+        self.BC03 = BC03
+        self.Mi = Mi
+        self.npca_gal = npca_gal
+        self.npca_qso = npca_qso
+        self.initial_guess = initial_guess
+        self.Fe_uv_op = Fe_uv_op
+        self.Fe_verner09 = Fe_verner09
+        self.Fe_flux_range = Fe_flux_range
+        self.poly = poly
+        self.BC = BC
+        self.rej_abs = rej_abs
+        self.MC = MC
+        self.n_trails = n_trails
+        self.tie_lambda = tie_lambda
+        self.tie_width = tie_width
+        self.tie_flux_1 = tie_flux_1
+        self.tie_flux_2 = tie_flux_2
+        self.plot_line_name = plot_line_name
+        self.plot_legend = plot_legend
+        self.save_fig = save_fig
         if name is None and save_fits_name is not None:
             name = save_fits_name
             print("Name is now {}.".format(name))
@@ -821,17 +834,105 @@ class QSOFitNew(QSOFit):
             poly = False
         if Fe_verner09 == True:
             Fe_uv_op=True
-        return super().Fit(name=name, nsmooth=nsmooth, and_or_mask=and_or_mask, reject_badpix=reject_badpix, 
-                           deredden=deredden, wave_range=wave_range, wave_mask=wave_mask, 
-                           decomposition_host=decomposition_host, BC03=BC03, Mi=Mi, npca_gal=npca_gal, 
-                           npca_qso=npca_qso, Fe_uv_op=Fe_uv_op, Fe_verner09=Fe_verner09,
-                           Fe_flux_range=Fe_flux_range, poly=poly, 
-                           BC=BC, rej_abs=rej_abs, initial_guess=initial_guess, MC=MC, n_trails=n_trails, 
-                           linefit=linefit, tie_lambda=tie_lambda, tie_width=tie_width, tie_flux_1=tie_flux_1, 
-                           tie_flux_2=tie_flux_2, save_result=save_result, plot_fig=plot_fig, 
-                           save_fig=save_fig, plot_line_name=plot_line_name, plot_legend=plot_legend, 
-                           dustmap_path=dustmap_path, save_fig_path=save_fig_path, save_fits_path=save_fits_path, 
-                           save_fits_name=save_fits_name)
+        
+        # get the source name in plate-mjd-fiber, if no then None
+        if name is None:
+            if np.array([self.plateid, self.mjd, self.fiberid]).any() is not None:
+                self.sdss_name = str(self.plateid).zfill(4)+'-'+str(self.mjd)+'-'+str(self.fiberid).zfill(4)
+            else:
+                if self.plateid is None:
+                    self.plateid = 0
+                if self.mjd is None:
+                    self.mjd = 0
+                if self.fiberid is None:
+                    self.fiberid = 0
+                self.sdss_name = ''
+        else:
+            self.sdss_name = name
+        
+        # set default path for figure and fits
+        if save_result == True and save_fits_path == None:
+            save_fits_path = self.path
+        if save_fig == True and save_fig_path == None:
+            save_fig_path = self.path
+        if save_fits_name == None:
+            if self.sdss_name == '':
+                save_fits_name = 'result'
+            else:
+                save_fits_name = self.sdss_name
+        else:
+            save_fits_name = save_fits_name
+        
+        # deal with pixels with error equal 0 or inifity
+        ind_gooderror = np.where((self.err != 0) & ~np.isinf(self.err), True, False)
+        err_good = self.err[ind_gooderror]
+        flux_good = self.flux[ind_gooderror]
+        lam_good = self.lam[ind_gooderror]
+        
+        if (self.and_mask is not None) & (self.or_mask is not None):
+            and_mask_good = self.and_mask[ind_gooderror]
+            or_mask_good = self.or_mask[ind_gooderror]
+            del self.and_mask, self.or_mask
+            self.and_mask = and_mask_good
+            self.or_mask = or_mask_good
+        del self.err, self.flux, self.lam
+        self.err = err_good
+        self.flux = flux_good
+        self.lam = lam_good
+        
+        if nsmooth is not None:
+            self.flux = self.Smooth(self.flux, nsmooth)
+            self.err = self.Smooth(self.err, nsmooth)
+        if (and_or_mask == True) and (self.and_mask is not None or self.or_mask is not None):
+            self._MaskSdssAndOr(self.lam, self.flux, self.err, self.and_mask, self.or_mask)
+        if reject_badpix == True:
+            self._RejectBadPix(self.lam, self.flux, self.err)
+        if wave_range is not None:
+            self._WaveTrim(self.lam, self.flux, self.err, self.z)
+        if wave_mask is not None:
+            self._WaveMsk(self.lam, self.flux, self.err, self.z)
+        if deredden == True and self.ra != -999. and self.dec != -999.:
+            self._DeRedden(self.lam, self.flux, self.err, self.ra, self.dec, dustmap_path)
+        
+        self._RestFrame(self.lam, self.flux, self.err, self.z)
+        self._CalculateSN(self.wave, self.flux)
+        self._OrignialSpec(self.wave, self.flux, self.err)
+        
+        # do host decomposition --------------
+        if self.z < 1.16 and decomposition_host == True:
+            self._DoDecomposition(self.wave, self.flux, self.err, self.path)
+        else:
+            self.decomposed = False
+            if self.z > 1.16 and decomposition_host == True:
+                print('redshift larger than 1.16 is not allowed for host '
+                      'decomposion!')
+        
+        # fit continuum --------------------
+        self._DoContiFit(self.wave, self.flux, self.err, self.ra, self.dec, self.plateid, self.mjd, self.fiberid)
+        # fit line
+        if linefit == True:
+            
+            self._DoLineFit(self.wave, self.line_flux, self.err, self.conti_fit)
+        else:
+            self.ncomp = 0
+        # save data -------
+        if save_result == True:
+            if linefit == False:
+                self.line_result = np.array([])
+                self.line_result_type = np.array([])
+                self.line_result_name = np.array([])
+            self._SaveResult(self.conti_result, self.conti_result_type, self.conti_result_name, self.line_result,
+                             self.line_result_type, self.line_result_name, save_fits_path, save_fits_name)
+        
+        # plot fig and save ------
+        if plot_fig == True:
+            if linefit == False:
+                self.gauss_result = np.array([])
+                self.all_comp_range = np.array([])
+                self.uniq_linecomp_sort = np.array([])
+            self._PlotFig(self.ra, self.dec, self.z, self.wave, self.flux, self.err, decomposition_host, linefit,
+                          self.tmp_all, self.gauss_result, self.f_conti_model, self.conti_fit, self.all_comp_range,
+                          self.uniq_linecomp_sort, self.line_flux, save_fig_path)
 
 
     def _SaveResult(self, conti_result, conti_result_type, conti_result_name, line_result, line_result_type,
@@ -1728,4 +1829,503 @@ class QSOFitNew(QSOFit):
         """transfer the logFWHM to normal frame"""
         return 2*np.sqrt(2*np.log(2))*(np.exp(logsigma)-1)*ac.c.to(u.Unit('km/s')).value
 
+    def F_poly_conti(self, xval, pp):
+        """Fit the continuum with a polynomial component account for the dust reddening with a*X+b*X^2+c*X^3"""
+        xval2 = xval-3000.
+        yval = 0.*xval2
+        for i in range(len(pp)):
+            yval = yval+pp[i]*xval2**(i+1)
+        return yval
+    
+    def Flux2L(self, flux, z):
+        """Transfer flux to luminoity assuming a flat Universe"""
+        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
+        DL = cosmo.luminosity_distance(z).value*10**6*3.08*10**18  # unit cm
+        L = flux*1.e-17*4.*np.pi*DL**2  # erg/s/A
+        return L
+    
+    def Onegauss(self, xval, pp):
+        """The single Gaussian model used to fit the emission lines 
+        Parameter: the scale factor, central wavelength in logwave, line FWHM in logwave
+        """
+        
+        term1 = np.exp(- (xval-pp[1])**2/(2.*pp[2]**2))
+        yval = pp[0]*term1/(np.sqrt(2.*np.pi)*pp[2])
+        return yval
+    
+    def Manygauss(self, xval, pp):
+        """The multi-Gaussian model used to fit the emission lines, it will call the onegauss function"""
+        ngauss = int(pp.shape[0]/3)
+        if ngauss != 0:
+            yval = 0.
+            for i in range(ngauss):
+                yval = yval+self.Onegauss(xval, pp[i*3:(i+1)*3])
+            return yval
+        else:
+            return np.zeros_like(xval)
 
+    def Get_Fe_flux(self, ranges, pp=None):
+        """Calculate the flux of fitted FeII template within given wavelength ranges.
+        ranges: 1-D array, 2-D array
+            if 1-D array was given, it should contain two parameters contain a range of wavelength. FeII flux within this range would be calculate and documented in the result fits file.
+            if 2-D array was given, it should contain a series of ranges. FeII flux within these ranges would be documented respectively.
+        pp: 1-D array with 3 or 6 items.
+            If 3 parameters were given, function will choose a proper template (MgII or balmer) according to the range.
+            If the range give excess either template, an error would be arose.
+            If 6 parameters were given (recommended), function would adopt the first three for the MgII template and the last three for the balmer."""
+        if pp is None:
+            pp = self.conti_fit.params[:6]
+        
+        Fe_flux_result = np.array([])
+        Fe_flux_type = np.array([])
+        Fe_flux_name = np.array([])
+        if np.array(ranges).ndim == 1:
+            Fe_flux_result = np.append(Fe_flux_result, self._calculate_Fe_flux(ranges, pp))
+            Fe_flux_name = np.append(Fe_flux_name, 'Fe_flux_'+str(int(np.min(ranges)))+'_'+str(int(np.max(ranges))))
+            Fe_flux_type = np.append(Fe_flux_type, 'float')
+        
+        elif np.array(ranges).ndim == 2:
+            for iii in range(np.array(self.Fe_flux_range).shape[0]):
+                Fe_flux_result = np.append(Fe_flux_result, self._calculate_Fe_flux(ranges[iii], pp))
+                Fe_flux_name = np.append(Fe_flux_name,
+                                         'Fe_flux_'+str(int(np.min(ranges[iii])))+'_'+str(int(np.max(ranges[iii]))))
+                Fe_flux_type = np.append(Fe_flux_type, 'float')
+        else:
+            raise IndexError('The parameter ranges only adopts arrays with 1 or 2 dimensions.')
+        
+        return Fe_flux_result, Fe_flux_type, Fe_flux_name
+
+    def Smooth(self, y, box_pts):
+        "Smooth the flux with n pixels"
+        box = np.ones(box_pts)/box_pts
+        y_smooth = np.convolve(y, box, mode='same')
+        return y_smooth
+    
+    def _CalculateSN(self, wave, flux):
+        """calculate the spectral SN ratio for 1350, 3000, 5100A, return the mean value of Three spots"""
+        if ((wave.min() < 1350. and wave.max() > 1350.) or (wave.min() < 3000. and wave.max() > 3000.) or (
+                wave.min() < 5100. and wave.max() > 5100.)):
+            
+            ind5100 = np.where((wave > 5080.) & (wave < 5130.), True, False)
+            ind3000 = np.where((wave > 3000.) & (wave < 3050.), True, False)
+            ind1350 = np.where((wave > 1325.) & (wave < 1375.), True, False)
+            
+            tmp_SN = np.array([flux[ind5100].mean()/flux[ind5100].std(), flux[ind3000].mean()/flux[ind3000].std(),
+                               flux[ind1350].mean()/flux[ind1350].std()])
+            tmp_SN = tmp_SN[~np.isnan(tmp_SN)]
+            self.SN_ratio_conti = tmp_SN.mean()
+        else:
+            self.SN_ratio_conti = -1.
+        
+        return self.SN_ratio_conti
+    
+    def _DoDecomposition(self, wave, flux, err, path):
+        """Decompose the host galaxy from QSO"""
+        datacube = self._HostDecompose(self.wave, self.flux, self.err, self.z, self.Mi, self.npca_gal, self.npca_qso,
+                                       path)
+        
+        # for some negtive host templete, we do not do the decomposition
+        if np.sum(np.where(datacube[3, :] < 0., True, False)) > 100:
+            self.host = np.zeros(len(wave))
+            self.decomposed = False
+            print('Get negtive host galaxy flux larger than 100 pixels, '
+                  'decomposition is not applied!')
+        else:
+            self.decomposed = True
+            del self.wave, self.flux, self.err
+            self.wave = datacube[0, :]
+            # block OIII, ha,NII,SII,OII,Ha,Hb,Hr,hdelta
+            
+            line_mask = np.where(
+                (self.wave < 4970.) & (self.wave > 4950.) | (self.wave < 5020.) & (self.wave > 5000.) | (
+                        self.wave < 6590.) & (self.wave > 6540.) | (self.wave < 6740.) & (self.wave > 6710.) | (
+                        self.wave < 3737.) & (self.wave > 3717.) | (self.wave < 4872.) & (self.wave > 4852.) | (
+                        self.wave < 4350.) & (self.wave > 4330.) | (self.wave < 4111.) & (self.wave > 4091.), True,
+                False)
+            
+            f = interpolate.interp1d(self.wave[~line_mask], datacube[3, :][~line_mask], bounds_error=False,
+                                     fill_value=0)
+            masked_host = f(self.wave)
+            self.masked_host = masked_host
+            self.flux = datacube[1, :]-masked_host  # QSO flux without host
+            self.err = datacube[2, :]
+            self.host = datacube[3, :]
+            self.qso = datacube[4, :]
+            self.host_data = datacube[1, :]-self.qso
+        return self.wave, self.flux, self.err
+    
+    def _HostDecompose(self, wave, flux, err, z, Mi, npca_gal, npca_qso, path):
+        path = datapath
+        """
+        core function to do host decomposition
+        #Wave is the obs frame wavelength, n_gal and n_qso are the number of eigenspectra used to fit
+        #If Mi is None then the qso use the globle ones to fit. If not then use the redshift-luminoisty binded ones to fit
+        #See details: 
+        #Yip, C. W., Connolly, A. J., Szalay, A. S., et al. 2004a, AJ, 128, 585
+        #Yip, C. W., Connolly, A. J., Vanden Berk, D. E., et al. 2004b, AJ, 128, 2603
+        """
+        
+        # read galaxy and qso eigenspectra -----------------------------------
+        if self.BC03 == False:
+            galaxy = fits.open(path+'pca/Yip_pca_templates/gal_eigenspec_Yip2004.fits')
+            gal = galaxy[1].data
+            wave_gal = gal['wave'].flatten()
+            flux_gal = gal['pca'].reshape(gal['pca'].shape[1], gal['pca'].shape[2])
+        if self.BC03 == True:
+            cc = 0
+            flux03 = np.array([])
+            for i in glob.glob(path+'/bc03/*.gz'):
+                cc = cc+1
+                gal_temp = np.genfromtxt(i)
+                wave_gal = gal_temp[:, 0]
+                flux03 = np.concatenate((flux03, gal_temp[:, 1]))
+            flux_gal = np.array(flux03).reshape(cc, -1)
+        
+        if Mi is None:
+            quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_global.fits')
+        else:
+            if -24 < Mi <= -22 and 0.08 <= z < 0.53:
+                quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_CZBIN1.fits')
+            elif -26 < Mi <= -24 and 0.08 <= z < 0.53:
+                quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_DZBIN1.fits')
+            elif -24 < Mi <= -22 and 0.53 <= z < 1.16:
+                quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_BZBIN2.fits')
+            elif -26 < Mi <= -24 and 0.53 <= z < 1.16:
+                quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_CZBIN2.fits')
+            elif -28 < Mi <= -26 and 0.53 <= z < 1.16:
+                quasar = fits.open(path+'pca/Yip_pca_templates/qso_eigenspec_Yip2004_DZBIN2.fits')
+            else:
+                raise RuntimeError('Host galaxy template is not available for this redshift and Magnitude!')
+        
+        qso = quasar[1].data
+        wave_qso = qso['wave'].flatten()
+        flux_qso = qso['pca'].reshape(qso['pca'].shape[1], qso['pca'].shape[2])
+        
+        # get the shortest wavelength range
+        wave_min = min(wave.min(), wave_gal.min(), wave_qso.min())
+        wave_max = max(wave.max(), wave_gal.max(), wave_qso.max())
+        
+        ind_data = np.where((wave > wave_min) & (wave < wave_max), True, False)
+        ind_gal = np.where((wave_gal > wave_min-1.) & (wave_gal < wave_max+1.), True, False)
+        ind_qso = np.where((wave_qso > wave_min-1.) & (wave_qso < wave_max+1.), True, False)
+        
+        flux_gal_new = np.zeros(flux_gal.shape[0]*flux[ind_data].shape[0]).reshape(flux_gal.shape[0],
+                                                                                   flux[ind_data].shape[0])
+        flux_qso_new = np.zeros(flux_qso.shape[0]*flux[ind_data].shape[0]).reshape(flux_qso.shape[0],
+                                                                                   flux[ind_data].shape[0])
+        for i in range(flux_gal.shape[0]):
+            fgal = interpolate.interp1d(wave_gal[ind_gal], flux_gal[i, ind_gal], bounds_error=False, fill_value=0)
+            flux_gal_new[i, :] = fgal(wave[ind_data])
+        for i in range(flux_qso.shape[0]):
+            fqso = interpolate.interp1d(wave_qso[ind_qso], flux_qso[i, ind_qso], bounds_error=False, fill_value=0)
+            flux_qso_new[i, :] = fqso(wave[ind_data])
+        
+        wave_new = wave[ind_data]
+        flux_new = flux[ind_data]
+        err_new = err[ind_data]
+        
+        flux_temp = np.vstack((flux_gal_new[0:npca_gal, :], flux_qso_new[0:npca_qso, :]))
+        res = np.linalg.lstsq(flux_temp.T, flux_new)[0]
+        
+        host_flux = np.dot(res[0:npca_gal], flux_temp[0:npca_gal])
+        qso_flux = np.dot(res[npca_gal:], flux_temp[npca_gal:])
+        
+        data_cube = np.vstack((wave_new, flux_new, err_new, host_flux, qso_flux))
+        
+        ind_f4200 = np.where((wave_new > 4160.) & (wave_new < 4210.), True, False)
+        frac_host_4200 = np.sum(host_flux[ind_f4200])/np.sum(flux_new[ind_f4200])
+        ind_f5100 = np.where((wave_new > 5080.) & (wave_new < 5130.), True, False)
+        frac_host_5100 = np.sum(host_flux[ind_f5100])/np.sum(flux_new[ind_f5100])
+        
+        return data_cube  # ,frac_host_4200,frac_host_5100
+    
+    def _MaskSdssAndOr(self, lam, flux, err, and_mask, or_mask):
+        """
+        Remove SDSS and_mask and or_mask points are not zero
+        Parameter:
+        ----------
+        lam: wavelength
+        flux: flux
+        err: 1 sigma error
+        and_mask: SDSS flag "and_mask", mask out all non-zero pixels
+        or_mask: SDSS flag "or_mask", mask out all npn-zero pixels
+        
+        Retrun:
+        ---------
+        return the same size array of wavelength, flux, error
+        """
+        ind_and_or = np.where((and_mask == 0) & (or_mask == 0), True, False)
+        del self.lam, self.flux, self.err
+        self.lam, self.flux, self.err = lam[ind_and_or], flux[ind_and_or], err[ind_and_or]
+    
+    def _RejectBadPix(self, lam, flux, err):
+        """
+        Reject 10 most possiable outliers, input wavelength, flux and error. Return a different size wavelength,
+        flux, and error.
+        """
+        # -----remove bad pixels, but not for high SN spectrum------------
+        ind_bad = pyasl.pointDistGESD(flux, 10)
+        wv = np.asarray([i for j, i in enumerate(lam) if j not in ind_bad[1]], dtype=np.float64)
+        fx = np.asarray([i for j, i in enumerate(flux) if j not in ind_bad[1]], dtype=np.float64)
+        er = np.asarray([i for j, i in enumerate(err) if j not in ind_bad[1]], dtype=np.float64)
+        del self.lam, self.flux, self.err
+        self.lam, self.flux, self.err = wv, fx, er
+        return self.lam, self.flux, self.err
+    
+    def _WaveTrim(self, lam, flux, err, z):
+        """
+        Trim spectrum with a range in the rest frame. 
+        """
+        # trim spectrum e.g., local fit emiision lines
+        ind_trim = np.where((lam/(1.+z) > self.wave_range[0]) & (lam/(1.+z) < self.wave_range[1]), True, False)
+        del self.lam, self.flux, self.err
+        self.lam, self.flux, self.err = lam[ind_trim], flux[ind_trim], err[ind_trim]
+        if len(self.lam) < 100:
+            raise RuntimeError("No enough pixels in the input wave_range!")
+        return self.lam, self.flux, self.err
+    
+    def _WaveMsk(self, lam, flux, err, z):
+        """Block the bad pixels or absorption lines in spectrum."""
+        
+        for msk in range(len(self.wave_mask)):
+            try:
+                ind_not_mask = ~np.where((lam/(1.+z) > self.wave_mask[msk, 0]) & (lam/(1.+z) < self.wave_mask[msk, 1]),
+                                         True, False)
+            except IndexError:
+                raise RuntimeError("Wave_mask should be 2D array,e.g., np.array([[2000,3000],[3100,4000]]).")
+            
+            del self.lam, self.flux, self.err
+            self.lam, self.flux, self.err = lam[ind_not_mask], flux[ind_not_mask], err[ind_not_mask]
+            lam, flux, err = self.lam, self.flux, self.err
+        return self.lam, self.flux, self.err
+    
+    def _RestFrame(self, lam, flux, err, z):
+        """Move wavelenth and flux to rest frame"""
+        self.wave = lam/(1.+z)
+        self.flux = flux*(1.+z)
+        self.err = err*(1.+z)
+        return self.wave, self.flux, self.err
+    
+    def _OrignialSpec(self, wave, flux, err):
+        """save the orignial spectrum before host galaxy decompsition"""
+        self.wave_prereduced = wave
+        self.flux_prereduced = flux
+        self.err_prereduced = err
+
+    def _calculate_Fe_flux(self, range, pp):
+        """Calculate the flux of fitted FeII template within one given wavelength range.
+        The pp could be an array with a length of 3 or 6. If 3 parameters were give, function will choose a
+        proper template (MgII or balmer) according to the range. If the range give excess both template, an
+        error would be arose. If 6 parameters were give, function would adopt the first three for the MgII
+        template and the last three for the balmer."""
+        
+        balmer_range = np.array([3686., 7484.])
+        mgii_range = np.array([1200., 3500.])
+        upper = np.min([np.max(range), np.max(self.wave)])
+        lower = np.max([np.min(range), np.min(self.wave)])
+        if upper < np.max(range) or lower > np.min(range):
+            print('Warning: The range given to calculate the flux of FeII pseudocontiuum (partially) exceeded '
+                  'the boundary of spectrum wavelength range. The excess part would be set to zero!')
+        disp = 1.e-4*np.log(10.)
+        xval = np.exp(np.arange(np.log(lower), np.log(upper), disp))
+        if len(xval) < 10:
+            print('Warning: Available part in range '+str(range)+' is less than 10 pixel. Flux = -999 would be given!')
+            return -999
+        
+        if len(pp) == 3:
+            if upper <= mgii_range[1] and lower >= mgii_range[0]:
+                yval = self.Fe_flux_mgii(xval, pp)
+            elif upper <= balmer_range[1] and lower >= balmer_range[0]:
+                yval = self.Fe_flux_balmer(xval, pp)
+            else:
+                raise OverflowError('Only 3 parameters are given in this function. \
+                Make sure the range is within [1200., 3500.] or [3686., 7484.]!')
+        
+        elif len(pp) == 6:
+            yval = self.Fe_flux_mgii(xval, pp[:3])+self.Fe_flux_balmer(xval, pp[3:])
+            if upper > balmer_range[1] or lower < mgii_range[0]:
+                print('Warning: The range given to calculate the flux of FeII pseudocontiuum (partially) '
+                      'exceeded the template range [1200., 7478.]. The excess part would be set to zero!')
+            elif upper > mgii_range[1] and lower < balmer_range[0]:
+                print('Warning: The range given to calculate the flux of FeII pseudocontiuum (partially) '
+                      'contained range [3500., 3686.] which is the gap between FeII templates and would be set to zero!')
+        
+        else:
+            raise IndexError('The parameter pp only adopts a list of 3 or 6.')
+        
+        flux = integrate.trapz(yval[(xval >= lower) & (xval <= upper)], xval[(xval >= lower) & (xval <= upper)])
+        return flux
+    
+    def _do_line_kmpfit(self, linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit):
+        """The key function to do the line fit with kmpfit"""
+        line_fit = kmpfit.Fitter(self._residuals_line, data=(
+            np.log(self.wave[ind_n]), line_flux[ind_n], self.err[ind_n]))  # fitting wavelength in ln space
+        line_fit_ini = np.array([])
+        line_fit_par = np.array([])
+        for n in range(nline_fit):
+            for nn in range(ngauss_fit[n]):
+                # set up initial parameter guess
+                line_fit_ini0 = [0., np.log(linelist['lambda'][ind_line][n]), linelist['inisig'][ind_line][n]]
+                line_fit_ini = np.concatenate([line_fit_ini, line_fit_ini0])
+                # set up parameter limits
+                lambda_low = np.log(linelist['lambda'][ind_line][n])-linelist['voff'][ind_line][n]
+                lambda_up = np.log(linelist['lambda'][ind_line][n])+linelist['voff'][ind_line][n]
+                sig_low = linelist['minsig'][ind_line][n]
+                sig_up = linelist['maxsig'][ind_line][n]
+                line_fit_par0 = [{'limits': (0., 10.**10)}, {'limits': (lambda_low, lambda_up)},
+                                 {'limits': (sig_low, sig_up)}]
+                line_fit_par = np.concatenate([line_fit_par, line_fit_par0])
+        
+        line_fit.parinfo = line_fit_par
+        line_fit.fit(params0=line_fit_ini)
+        line_fit.params = self.newpp
+        self.line_fit = line_fit
+        self.line_fit_ini = line_fit_ini
+        self.line_fit_par = line_fit_par
+        return line_fit
+    
+    def _do_tie_line(self, linelist, ind_line):
+        """Tie line's central"""
+        # --------------- tie parameter-----------
+        # so far, only two groups of each properties are support for tying
+        ind_tie_v1 = np.where(linelist['vindex'][ind_line] == 1., True, False)
+        ind_tie_v2 = np.where(linelist['vindex'][ind_line] == 2., True, False)
+        ind_tie_w1 = np.where(linelist['windex'][ind_line] == 1., True, False)
+        ind_tie_w2 = np.where(linelist['windex'][ind_line] == 2., True, False)
+        ind_tie_f1 = np.where(linelist['findex'][ind_line] == 1., True, False)
+        ind_tie_f2 = np.where(linelist['findex'][ind_line] == 2., True, False)
+        
+        ind_tie_vindex1 = np.array([])
+        ind_tie_vindex2 = np.array([])
+        ind_tie_windex1 = np.array([])
+        ind_tie_windex2 = np.array([])
+        ind_tie_findex1 = np.array([])
+        ind_tie_findex2 = np.array([])
+        
+        # get index of vindex windex in initial parameters
+        for iii in range(len(ind_tie_v1)):
+            if ind_tie_v1[iii] == True:
+                ind_tie_vindex1 = np.concatenate(
+                    [ind_tie_vindex1, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii])*3+1)])])
+        if np.any(ind_tie_v1):
+            self.delta_lambda1 = (np.log(linelist['lambda'][ind_line][ind_tie_v1])-np.log(
+                linelist['lambda'][ind_line][ind_tie_v1][0]))[1:]
+        else:
+            self.delta_lambda1 = np.array([])
+        self.ind_tie_vindex1 = ind_tie_vindex1
+        
+        for iii in range(len(ind_tie_v2)):
+            if ind_tie_v2[iii] == True:
+                ind_tie_vindex2 = np.concatenate(
+                    [ind_tie_vindex2, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii])*3+1)])])
+        if np.any(ind_tie_v2):
+            self.delta_lambda2 = (np.log(linelist['lambda'][ind_line][ind_tie_v2])-np.log(
+                linelist['lambda'][ind_line][ind_tie_v2][0]))[1:]
+        else:
+            self.delta_lambda2 = np.array([])
+        self.ind_tie_vindex2 = ind_tie_vindex2
+        
+        for iii in range(len(ind_tie_w1)):
+            if ind_tie_w1[iii] == True:
+                ind_tie_windex1 = np.concatenate(
+                    [ind_tie_windex1, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii])*3+2)])])
+        self.ind_tie_windex1 = ind_tie_windex1
+        
+        for iii in range(len(ind_tie_w2)):
+            if ind_tie_w2[iii] == True:
+                ind_tie_windex2 = np.concatenate(
+                    [ind_tie_windex2, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii])*3+2)])])
+        self.ind_tie_windex2 = ind_tie_windex2
+        
+        # get index of findex for 1&2 case in initial parameters
+        for iii_1 in range(len(ind_tie_f1)):
+            if ind_tie_f1[iii_1] == True:
+                ind_tie_findex1 = np.concatenate(
+                    [ind_tie_findex1, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii_1])*3)])])
+        
+        for iii_2 in range(len(ind_tie_f2)):
+            if ind_tie_f2[iii_2] == True:
+                ind_tie_findex2 = np.concatenate(
+                    [ind_tie_findex2, np.array([int(np.sum(linelist['ngauss'][ind_line][0:iii_2])*3)])])
+        
+        # get tied fvalue for case 1 and case 2
+        if np.sum(ind_tie_f1) > 0:
+            self.fvalue_factor_1 = linelist['fvalue'][ind_line][ind_tie_f1][1]/linelist['fvalue'][ind_line][ind_tie_f1][
+                0]
+        else:
+            self.fvalue_factor_1 = np.array([])
+        if np.sum(ind_tie_f2) > 0:
+            self.fvalue_factor_2 = linelist['fvalue'][ind_line][ind_tie_f2][1]/linelist['fvalue'][ind_line][ind_tie_f2][
+                0]
+        else:
+            self.fvalue_factor_2 = np.array([])
+        
+        self.ind_tie_findex1 = ind_tie_findex1
+        self.ind_tie_findex2 = ind_tie_findex2
+    
+    # ---------MC error for emission line parameters-------------------
+    def _line_mc(self, x, y, err, pp0, pp_limits, n_trails, compcenter):
+        """calculate the Monte Carlo errror of line parameters"""
+        all_para_1comp = np.zeros(len(pp0)*n_trails).reshape(len(pp0), n_trails)
+        all_para_std = np.zeros(len(pp0))
+        all_fwhm = np.zeros(n_trails)
+        all_sigma = np.zeros(n_trails)
+        all_ew = np.zeros(n_trails)
+        all_peak = np.zeros(n_trails)
+        all_area = np.zeros(n_trails)
+        
+        for tra in range(n_trails):
+            flux = y+np.random.randn(len(y))*err
+            line_fit = kmpfit.Fitter(residuals=self._residuals_line, data=(x, flux, err), maxiter=50)
+            line_fit.parinfo = pp_limits
+            line_fit.fit(params0=pp0)
+            line_fit.params = self.newpp
+            all_para_1comp[:, tra] = line_fit.params
+            
+            # further line properties
+            all_fwhm[tra], all_sigma[tra], all_ew[tra], all_peak[tra], all_area[tra] = self.line_prop(compcenter,
+                                                                                                      line_fit.params,
+                                                                                                      'broad')
+        
+        for st in range(len(pp0)):
+            all_para_std[st] = all_para_1comp[st, :].std()
+        
+        return all_para_std, all_fwhm.std(), all_sigma.std(), all_ew.std(), all_peak.std(), all_area.std()
+
+    def _residuals_line(self, pp, data):
+        "The line residual function used in kmpfit"
+        xval, yval, weight = data
+        
+        # ------tie parameter------------
+        if self.tie_lambda == True:
+            if len(self.ind_tie_vindex1) > 1:
+                for xx in range(len(self.ind_tie_vindex1)-1):
+                    pp[int(self.ind_tie_vindex1[xx+1])] = pp[int(self.ind_tie_vindex1[0])]+self.delta_lambda1[xx]
+            
+            if len(self.ind_tie_vindex2) > 1:
+                for xx in range(len(self.ind_tie_vindex2)-1):
+                    pp[int(self.ind_tie_vindex2[xx+1])] = pp[int(self.ind_tie_vindex2[0])]+self.delta_lambda2[xx]
+        
+        if self.tie_width == True:
+            if len(self.ind_tie_windex1) > 1:
+                for xx in range(len(self.ind_tie_windex1)-1):
+                    pp[int(self.ind_tie_windex1[xx+1])] = pp[int(self.ind_tie_windex1[0])]
+            
+            if len(self.ind_tie_windex2) > 1:
+                for xx in range(len(self.ind_tie_windex2)-1):
+                    pp[int(self.ind_tie_windex2[xx+1])] = pp[int(self.ind_tie_windex2[0])]
+        
+        if len(self.ind_tie_findex1) > 0 and self.tie_flux_1 == True:
+            pp[int(self.ind_tie_findex1[1])] = pp[int(self.ind_tie_findex1[0])]*self.fvalue_factor_1
+        if len(self.ind_tie_findex2) > 0 and self.tie_flux_2 == True:
+            pp[int(self.ind_tie_findex2[1])] = pp[int(self.ind_tie_findex2[0])]*self.fvalue_factor_2
+        # ---------------------------------
+        
+        # restore parameters
+        self.newpp = pp.copy()
+        return (yval-self.Manygauss(xval, pp))/weight
+    
+    def _residuals(self, pp, data):
+        """Continual residual function used in kmpfit"""
+        xval, yval, weight = data
+        return (yval-self._f_conti_all(xval, pp))/weight
