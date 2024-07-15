@@ -1,55 +1,58 @@
 # QSOFITMORE
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5810042.svg)](https://doi.org/10.5281/zenodo.5810042)  
-A wrapper of PyQSOFit for customization
+A python package for fitting UV-optical QSO spectra. This package is developed based on [`PyQSOFit`](https://github.com/legolason/PyQSOFit) (v1.1), with some additional features for the LAMOST quasar survey ([Jin et al. 2023](https://ui.adsabs.harvard.edu/abs/2023ApJS..265...25J/abstract)) and the survey for quasars behind the Galactic plane ([Fu et al. 2022](https://ui.adsabs.harvard.edu/abs/2022ApJS..261...32F/abstract)). `qsofitmore` is now a standalone package with the same GNU license as `PyQSOFit`. For the latest version of `PyQSOFit`, please see https://github.com/legolason/PyQSOFit. 
 
 ### Features  
+- Fit high-order (n_upper=6 to n_upper=50) Balmer emission line series using templates from Storey & Hummer (1995).
+- Add FeII template from Verner et al. (2009) within [2000, 12000] AA.
 - Reading non-SDSS spectra without plateid, mjd and fiberid. 
 - Narrow line measurements in the line MC process (which enables estimating uncertainties for narrow line parameters). 
 - Dust maps and extinction laws other than SFD98 and CCM. 
 - LaTeX rendering for line names in plots. 
 
-### Updates from v1.0.0 to v1.1.0:
-- Added an optional broken power-law model in the continuum fitting process.  
-- Enabled line property outputs for all narrow lines, OIII core+wing as a whole, and CIV br+na as a whole.  
-- Used new criterion to verify narrow/broad components in self._PlotFig() to prevent narrow components from being plotted as red (broad) lines.  
-- Changed prefix of comp_result from number to the complex name.  
-- Bug fixes.
-
-### Updates from v1.1.0 to v1.2.0:
-- `PyQSOFit` is now included as a submodule. 
-- The installation process is simplified by adding the dependencies `sfdmap`, `PyAstronomy`, and `uncertainties` to `setup.py`, and by adding `PyQSOFit` to `requirements.txt`.
-
-
 ## 1. Installation
-Currently, the fitting class of `qsofitmore` is a wrapper of that of `PyQSOFit`. Therefore `PyQSOFit` and its dependencies are required to run `qsofitmore`. 
-
-Dependencies of `PyQSOFit`: astropy (included in anaconda), sfdmap, kapteyn, PyAstronomy. 
-
-Dependencies of `qsofitmore`: uncertainties, dustmaps (optional, needed when using dust maps other than sfd, e.g. planck dust map). 
-
-Assuming you have anaconda installed, the following steps demonstrate how to install dependencies above.
-
-
-
-Install [kapteyn](https://www.astro.rug.nl/software/kapteyn/):  
+Dependencies:
 ```
-# From kapteyn website
+astropy
+kapteyn
+dustmaps
+PyAstronomy
+uncertainties
+```
+
+Assuming you have anaconda installed (`astropy` included), the following steps demonstrate how to install dependencies above.
+
+Install [`kapteyn`](https://www.astro.rug.nl/software/kapteyn/):  
+```
+# From `kapteyn` website
 pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
 ```
+
+Install `dustmaps`, `uncertainties`, and `PyAstronomy`:
+```
+pip install dustmaps uncertainties PyAstronomy
+```
+
+Download the SFD98 dust map:
+```python
+from dustmaps.config import config
+config['data_dir'] = '/path/to/store/maps/in'
+
+import dustmaps.sfd
+dustmaps.sfd.fetch()
+```
+
+Check https://dustmaps.readthedocs.io/en/latest/installation.html for more dust maps.
 
 After installing the dependencies, download and set up the `qsofitmore` package.
 
 ```
-git clone --recursive https://github.com/rudolffu/qsofitmore.git 
+git clone https://github.com/rudolffu/qsofitmore.git 
 cd qsofitmore 
-python -m pip install -r requirements.txt 
+python -m pip install .
+# for development use:
+python -m pip install -e .
 ```
-
-Install dustmaps (optional):
-```
-pip install dustmaps
-```
-
 
 ## 2. Tutorial
  
@@ -219,7 +222,31 @@ Try:
 `q.all_result_name`, `q.all_result`, `q.na_line_result`, `q.conti_result_name`, `q.gauss_result_name`
 
 
-```python
 
-```
 
+### 2.5 Other options in the fitting process
+
+#### a) The broken power-law model
+
+The broken power-law model is an optional feature in the continuum fitting process. It is enabled by setting `broken_pl = True` in `q.Fit()`. The default is `False`.
+
+#### b) The Verner et al. (2009) FeII template
+
+The Verner et al. (2009) FeII template is an alternative to the default ones. It is enabled by setting `Fe_verner09 = True` in addition to `Fe_uv_op = True` in `q.Fit()`. The default value of `Fe_verner09` is `False`.
+
+#### c) The Storey & Hummer (1995) Balmer emission line series templates
+
+The Storey & Hummer (1995) Balmer emission line series templates are enabled by setting `BC = True` in `q.Fit()`. The default value of `BC` is `False`. The default electron density is 10^9 cm^-3, and the default electron temperature is 10^4 K. To change the electron density to 10^10 cm^-3, use `q.set_log10_electron_density(ne=10)` before calling `q.Fit()`. Currently, only 10^9 and 10^10 cm^-3 are supported.
+
+
+### Updates from v1.1.0 to v1.2.1:
+- Added the Verner et al. (2009) FeII template within [2000, 12000] AA.
+- Added the Storey & Hummer (1995) Balmer emission line series templates from n_upper=6 to n_upper=50.
+- Merged the `PyQSOFit.py` code into `fitmodule.py` to simplify the installation process. `qsofitmore` is now a standalone package with the same GNU license as `PyQSOFit`.
+
+### Updates from v1.0.0 to v1.1.0:
+- Added an optional broken power-law model in the continuum fitting process.  
+- Enabled line property outputs for all narrow lines, OIII core+wing as a whole, and CIV br+na as a whole.  
+- Used new criterion to verify narrow/broad components in self._PlotFig() to prevent narrow components from being plotted as red (broad) lines.  
+- Changed prefix of comp_result from number to the complex name.  
+- Bug fixes.

@@ -16,7 +16,7 @@ setuptools.setup(
     version="1.2.1",
     author="Yuming Fu",
     author_email="fuympku@outlook.com",
-    description="A python package for fitting UV-optical spectra of quasars. Currently a wrapper of PyQSOFit for customization.",
+    description="A python package for fitting UV-optical spectra of quasars.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/rudolffu/qsofitmore",

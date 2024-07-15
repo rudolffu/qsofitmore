@@ -81,8 +81,14 @@ def getebv(ra, dec, mapname='planck', map_dir=None):
         planck = PlanckQuery()
         ebv = planck(coord)
     elif mapname.lower()=='sfd':
-        from dustmaps.sfd import SFDQuery
-        sfd = SFDQuery(map_dir=map_dir)
+        try:
+            from dustmaps.sfd import SFDQuery
+            sfd = SFDQuery(map_dir=map_dir)
+        except:
+            print(f'The SFD dust map files are not found.\n'
+                  f'Using web query instead.')
+            from dustmaps.sfd import SFDWebQuery
+            sfd = SFDWebQuery()
         ebv = sfd(coord)
     return ebv
 
