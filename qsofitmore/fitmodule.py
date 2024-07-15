@@ -1900,22 +1900,62 @@ class QSOFitNew:
         y_smooth = np.convolve(y, box, mode='same')
         return y_smooth
     
-    def _CalculateSN(self, wave, flux):
-        """calculate the spectral SN ratio for 1350, 3000, 5100A, return the mean value of Three spots"""
-        if ((wave.min() < 1350. and wave.max() > 1350.) or (wave.min() < 3000. and wave.max() > 3000.) or (
-                wave.min() < 5100. and wave.max() > 5100.)):
-            
-            ind5100 = np.where((wave > 5080.) & (wave < 5130.), True, False)
-            ind3000 = np.where((wave > 3000.) & (wave < 3050.), True, False)
-            ind1350 = np.where((wave > 1325.) & (wave < 1375.), True, False)
-            
-            tmp_SN = np.array([flux[ind5100].mean()/flux[ind5100].std(), flux[ind3000].mean()/flux[ind3000].std(),
-                               flux[ind1350].mean()/flux[ind1350].std()])
-            tmp_SN = tmp_SN[~np.isnan(tmp_SN)]
-            self.SN_ratio_conti = tmp_SN.mean()
-        else:
-            self.SN_ratio_conti = -1.
+    def _CalculateSN(self, wave, flux, alter=True):
+        """
+        Calculate the spectral SN ratio for 1350, 3000, 5100A, return the mean value of Three spots
+        This function will automatically check if the 50A vicinity of at the default three wavelength contain more than
+        10 pixels. If so, this function will calculate the continuum SN ratio from available regions. If not, it may
+        imply that the give spectrum are very low resolution or have frequent gaps in their wavelength coverage. We
+        provide another algorithm to calculate the SNR regardless of the continuum.
         
+        Parameters
+        ----------
+        wave: 1-D array
+            wavelength of the spectrum
+        flux: 1-D array
+            flux of the spectrum
+        alter: bool
+            if True, the function will calculate the SNR regardless of the continuum. If False, the function will return
+            -1 if the continuum SNR is not available.
+            
+        Returns
+        -------
+        SN_ratio_conti: float
+            the SNR of the continuum
+        """
+        ind5100 = (wave > 5080) & (wave < 5130)
+        ind3000 = (wave > 3000) & (wave < 3050)
+        ind1350 = (wave > 1325) & (wave < 1375)
+
+        if np.all(np.array([np.sum(ind5100), np.sum(ind3000), np.sum(ind1350)]) < 10):
+
+            if alter is False:
+                self.SN_ratio_conti = -1.
+                return self.SN_ratio_conti
+
+            # referencing: www.stecf.org/software/ASTROsoft/DER_SNR/
+            input_data = np.array(flux)
+            # Values that are exactly zero (padded) are skipped
+            input_data = np.array(input_data[np.where(input_data != 0.0)])
+            n = len(input_data)
+            # For spectra shorter than this, no value can be returned
+            if (n > 4):
+                signal = np.median(input_data)
+                noise = 0.6052697 * np.median(np.abs(2.0 * input_data[2:n - 2] - input_data[0:n - 4] - input_data[4:n]))
+                self.SN_ratio_conti = float(signal / noise)
+            else:
+                self.SN_ratio_conti = -1.
+
+        else:
+            tmp_SN = np.array([flux[ind5100].mean() / flux[ind5100].std() if np.sum(ind5100) > 0 else np.nan,
+                               flux[ind3000].mean() / flux[ind3000].std() if np.sum(ind3000) > 0 else np.nan,
+                               flux[ind1350].mean() / flux[ind1350].std() if np.sum(ind1350) > 0 else np.nan])
+            tmp_SN = tmp_SN[np.array([np.sum(ind5100), np.sum(ind3000), np.sum(ind1350)]) > 10]
+            if not np.all(np.isnan(tmp_SN)):
+                self.SN_ratio_conti = np.nanmean(tmp_SN)
+            else:
+                self.SN_ratio_conti = -1.
+
         return self.SN_ratio_conti
     
     def _DoDecomposition(self, wave, flux, err, path):
