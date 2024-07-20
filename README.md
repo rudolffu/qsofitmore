@@ -14,7 +14,7 @@ A python package for fitting UV-optical QSO spectra. This package is developed b
 Dependencies:
 ```
 astropy
-kapteyn
+kapteyn (depends on cython)
 dustmaps
 PyAstronomy
 uncertainties
@@ -24,7 +24,7 @@ Assuming you have anaconda installed (`astropy` included), the following steps d
 
 Install [`kapteyn`](https://www.astro.rug.nl/software/kapteyn/):  
 ```
-# From `kapteyn` website
+pip install cython
 pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
 ```
 
