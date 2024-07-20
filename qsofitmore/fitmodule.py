@@ -1600,9 +1600,9 @@ class QSOFitNew:
                     na_line_result.update({err_name_tmp:err_tmp})
             for line in keys:
                 linecenter = float(linelist[linelist['linename']==line]['lambda'].item())
-                line_scale = float(df_gauss[line+'_1_scale'])
-                line_centerwave = float(df_gauss[line+'_1_centerwave'])
-                line_sigma = float(df_gauss[line+'_1_sigma'])
+                line_scale = float(df_gauss[line+'_1_scale'][0])
+                line_centerwave = float(df_gauss[line+'_1_centerwave'][0])
+                line_sigma = float(df_gauss[line+'_1_sigma'][0])
                 line_param = np.array([line_scale,line_centerwave,line_sigma])
                 na_tmp = self.line_prop(linecenter, line_param, 'narrow')
                 if line_sigma > 0.0017:
@@ -1624,12 +1624,12 @@ class QSOFitNew:
                     linec = comp_tmp.split('_')[0]
                     linew = linec+'w'
                     linecenter = float(linelist[linelist['linename']==linec]['lambda'].item())
-                    line_scale1 = float(df_gauss[linec+'_1_scale'])
-                    line_centerwave1 = float(df_gauss[linec+'_1_centerwave'])
-                    line_sigma1 = float(df_gauss[linec+'_1_sigma'])
-                    line_scale2 = float(df_gauss[linew+'_1_scale'])
-                    line_centerwave2 = float(df_gauss[linew+'_1_centerwave'])
-                    line_sigma2 = float(df_gauss[linew+'_1_sigma'])
+                    line_scale1 = float(df_gauss[linec+'_1_scale'][0])
+                    line_centerwave1 = float(df_gauss[linec+'_1_centerwave'][0])
+                    line_sigma1 = float(df_gauss[linec+'_1_sigma'][0])
+                    line_scale2 = float(df_gauss[linew+'_1_scale'][0])
+                    line_centerwave2 = float(df_gauss[linew+'_1_centerwave'][0])
+                    line_sigma2 = float(df_gauss[linew+'_1_sigma'][0])
                     line_param = np.array([line_scale1,line_centerwave1,line_sigma1,
                                            line_scale2,line_centerwave2,line_sigma2])
                     na_tmp = self.comb_line_prop(linecenter, line_param)
@@ -2079,7 +2079,7 @@ class QSOFitNew:
         err_new = err[ind_data]
         
         flux_temp = np.vstack((flux_gal_new[0:npca_gal, :], flux_qso_new[0:npca_qso, :]))
-        res = np.linalg.lstsq(flux_temp.T, flux_new)[0]
+        res = np.linalg.lstsq(flux_temp.T, flux_new, rcond=None)[0]
         
         host_flux = np.dot(res[0:npca_gal], flux_temp[0:npca_gal])
         qso_flux = np.dot(res[npca_gal:], flux_temp[npca_gal:])
