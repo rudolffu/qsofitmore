@@ -1142,8 +1142,8 @@ class QSOFitNew:
         ind = ((wave <= range_high) & (wave >= range_low))
         wave_in = wave[ind]
         contiflux = f_conti_no_fe[ind]
-        Fe_flux = integrate.trapz(f_fe[ind], wave_in)
-        Fe_ew = integrate.trapz(f_fe[ind]/contiflux, wave_in)
+        Fe_flux = integrate.trapezoid(f_fe[ind], wave_in)
+        Fe_ew = integrate.trapezoid(f_fe[ind]/contiflux, wave_in)
         return Fe_flux, Fe_ew
 
     def cal_Fe_line_res(self):
@@ -1735,10 +1735,10 @@ class QSOFitNew:
                 # calculate the line sigma and EW in normal wavelength
                 line_flux = self.Manygauss(xx, pp)
                 line_wave = np.exp(xx)
-                lambda0 = integrate.trapz(line_flux, line_wave)  # calculate the total broad line flux
-                lambda1 = integrate.trapz(line_flux*line_wave, line_wave)
-                lambda2 = integrate.trapz(line_flux*line_wave*line_wave, line_wave)
-                ew = integrate.trapz(np.abs(line_flux/contiflux), line_wave)
+                lambda0 = integrate.trapezoid(line_flux, line_wave)  # calculate the total broad line flux
+                lambda1 = integrate.trapezoid(line_flux*line_wave, line_wave)
+                lambda2 = integrate.trapezoid(line_flux*line_wave*line_wave, line_wave)
+                ew = integrate.trapezoid(np.abs(line_flux/contiflux), line_wave)
                 area = lambda0
                 
                 sigma = np.sqrt(lambda2/lambda0-(lambda1/lambda0)**2)/compcenter*c
@@ -1812,10 +1812,10 @@ class QSOFitNew:
                 # calculate the line sigma and EW in normal wavelength
                 line_flux = self.Manygauss(xx, pp)
                 line_wave = np.exp(xx)
-                lambda0 = integrate.trapz(line_flux, line_wave)  # calculate the total broad line flux
-                lambda1 = integrate.trapz(line_flux*line_wave, line_wave)
-                lambda2 = integrate.trapz(line_flux*line_wave*line_wave, line_wave)
-                ew = integrate.trapz(np.abs(line_flux/contiflux), line_wave)
+                lambda0 = integrate.trapezoid(line_flux, line_wave)  # calculate the total broad line flux
+                lambda1 = integrate.trapezoid(line_flux*line_wave, line_wave)
+                lambda2 = integrate.trapezoid(line_flux*line_wave*line_wave, line_wave)
+                ew = integrate.trapezoid(np.abs(line_flux/contiflux), line_wave)
                 area = lambda0
                 
                 sigma = np.sqrt(lambda2/lambda0-(lambda1/lambda0)**2)/compcenter*c
@@ -2207,7 +2207,7 @@ class QSOFitNew:
         else:
             raise IndexError('The parameter pp only adopts a list of 3 or 6.')
         
-        flux = integrate.trapz(yval[(xval >= lower) & (xval <= upper)], xval[(xval >= lower) & (xval <= upper)])
+        flux = integrate.trapezoid(yval[(xval >= lower) & (xval <= upper)], xval[(xval >= lower) & (xval <= upper)])
         return flux
     
     def _do_line_kmpfit(self, linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit):
