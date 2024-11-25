@@ -485,8 +485,8 @@ class QSOFitNew:
                  'Fe_uv_FWHM', 'Fe_uv_FWHM_err', 'Fe_uv_shift', 'Fe_uv_shift_err', 'Fe_op_norm', 'Fe_op_norm_err',
                  'Fe_op_FWHM', 'Fe_op_FWHM_err', 'Fe_op_shift', 'Fe_op_shift_err', 'PL_norm', 'PL_norm_err', 'PL_slope',
                  'PL_slope_err', 'BalmerC_norm', 'BalmerC_norm_err', 'BalmerS_FWHM', 'BalmerS_FWHM_err', 'BalmerS_norm',
-                 'BalmerS_norm_err', 'POLY_a', 'POLY_a_err', 'POLY_b', 'POLY_b_err', 'POLY_c', 'POLY_c_err', 'L1350',
-                 'L1350_err', 'L3000', 'L3000_err', 'L5100', 'L5100_err'])
+                 'BalmerS_norm_err', 'POLY_a', 'POLY_a_err', 'POLY_b', 'POLY_b_err', 'POLY_c', 'POLY_c_err', 'LOGL1350',
+                 'LOGL1350_err', 'LOGL3000', 'LOGL3000_err', 'LOGL5100', 'LOGL5100_err'])
             if self.broken_pl == True:
                 self.conti_result = np.concatenate((self.conti_result, 
                                                     conti_fit.params[14], 
@@ -516,7 +516,7 @@ class QSOFitNew:
             self.conti_result_name = np.array(
                 ['ra', 'dec', 'plateid', 'MJD', 'fiberid', 'redshift', 'SNR_SPEC', 'SN_ratio_conti', 'Fe_uv_norm', 'Fe_uv_FWHM',
                  'Fe_uv_shift', 'Fe_op_norm', 'Fe_op_FWHM', 'Fe_op_shift', 'PL_norm', 'PL_slope', 'BalmerC_norm',
-                 'BalmerS_FWHM', 'BalmerS_norm', 'POLY_a', 'POLY_b', 'POLY_c', 'L1350', 'L3000', 'L5100'])
+                 'BalmerS_FWHM', 'BalmerS_norm', 'POLY_a', 'POLY_b', 'POLY_c', 'LOGL1350', 'LOGL3000', 'LOGL5100'])
             if self.broken_pl == True:
                 self.conti_result = np.concatenate((self.conti_result, 
                                                     conti_fit.params[14]), axis=None)
@@ -619,21 +619,37 @@ class QSOFitNew:
 
 
     def _L_conti(self, wave, pp):
-        """Calculate continuum Luminoisity at 1350,3000,5100A"""
+        """
+        Calculate log10 \lambda L_{\lambda} at 1350, 3000, and 5100 A.
+            L_{\lambda} is the monochromatic luminosity in erg/s/A, and
+            \lambda L_{\lambda} is the a luminosity measure in erg/s.
+        
+        Parameters:
+        ----------
+        wave : array
+            wavelength array
+        pp : array
+            parameters for the continuum model
+        Returns:
+        ----------
+        loglamL : array
+            log10(\lambda L_{\lambda}), where \lambda = 1350, 3000, 5100 A 
+            \lambda L_{\lambda}(1350) is also known as L1350, etc.
+        """
         conti_flux = pp[6]*(wave/3000.0)**pp[7]+self.F_poly_conti(wave, pp[11:14])
         if self.broken_pl == True:
             conti_flux = broken_pl_model(wave, pp[7], pp[14], pp[6]) + self.F_poly_conti(wave, pp[11:14])
         # plt.plot(wave,conti_flux)
-        L = np.array([])
-        for LL in zip([1350., 3000., 5100.]):
-            if wave.max() > LL[0] and wave.min() < LL[0]:
-                L_tmp = np.asarray([np.log10(
-                    LL[0]*self.Flux2L(conti_flux[np.where(abs(wave-LL[0]) < 5., True, False)].mean(), self.z))])
+        lamL = []
+        for lam in [1350., 3000., 5100.]:
+            if wave.min() < lam < wave.max():
+                lam_flux = conti_flux[(wave > lam - 5) & (wave < lam + 5)].mean()
+                lamL.append(lam * flux_to_luminosity(lam_flux, self.z))
             else:
-                L_tmp = np.array([-1.])
-            L = np.concatenate([L, L_tmp])  # save log10(L1350,L3000,L5100)
-        return L
-
+                lamL.append(0.1)
+        loglamL = np.log10(np.array(lamL))
+        return loglamL
+    
 
     def Fe_flux_mgii(self, xval, pp):
         "Fit the UV Fe compoent on the continuum from 1200 to 3500 A based on the Boroson & Green 1992."
@@ -942,6 +958,10 @@ class QSOFitNew:
         self.all_result_name = np.concatenate([conti_result_name, line_result_name])
         all_result = self.all_result.astype(float)
         t = Table(all_result, names=(self.all_result_name), dtype=self.all_result_type)
+        if 'Ha_whole_br_area' in self.all_result_name:
+            t['LOGLHA'] = np.log10(flux_to_luminosity(t['Ha_whole_br_area'], self.z))
+        if 'Ha_whole_br_area_err' in self.all_result_name:
+            t['LOGLHA_ERR'] = np.abs(t['Ha_whole_br_area_err'] / (t['Ha_whole_br_area'] * np.log(10)))
         self.result_table = t
         t.write(save_fits_path+save_fits_name+'.fits', format='fits', overwrite=True)
 
@@ -1663,7 +1683,7 @@ class QSOFitNew:
 
 
     # -----line properties calculation function--------
-    def line_prop(self, compcenter, pp, linetype):
+    def line_prop(self, compcenter, pp, linetype, save_luminosity=False):
         """
         Calculate the further results for the broad component in emission lines, e.g., FWHM, sigma, peak, line flux
         The compcenter is the theortical vacuum wavelength for the broad compoenet.
@@ -1836,13 +1856,6 @@ class QSOFitNew:
             yval = yval+pp[i]*xval2**(i+1)
         return yval
     
-    def Flux2L(self, flux, z):
-        """Transfer flux to luminoity assuming a flat Universe"""
-        cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
-        DL = cosmo.luminosity_distance(z).value*10**6*3.08*10**18  # unit cm
-        L = flux*1.e-17*4.*np.pi*DL**2  # erg/s/A
-        return L
-    
     def Onegauss(self, xval, pp):
         """The single Gaussian model used to fit the emission lines 
         Parameter: the scale factor, central wavelength in logwave, line FWHM in logwave
@@ -2005,7 +2018,7 @@ class QSOFitNew:
             if Mi <= mag_limit:
                 for j, (low_z, high_z) in enumerate(redshift_bins):
                     if low_z <= z < high_z:
-                        return f"qso_eigenspec_Yip2004_{'D' if i == 0 else 'B'}ZBIN{j+1}.fits"
+                        return f"qso_eigenspec_Yip2004_{'D' if i == 0 else 'C0'}ZBIN{j+1}.fits"
         return "qso_eigenspec_Yip2004_AZBIN5.fits"
 
     def _HostDecompose(self, wave, flux, err, z, Mi, npca_gal, npca_qso, path):
