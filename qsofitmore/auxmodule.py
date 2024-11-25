@@ -67,12 +67,42 @@ def sciplotstyle():
     matplotlib.rcParams['font.serif'] = ['Times New Roman']
 
 
-def Flux2L(flux, z):
-    """Transfer flux to luminoity assuming a flat Universe"""
+def flux_to_luminosity(flux, z):
+    """
+    Calculate luminosity using flux assuming a flat Universe
+    
+    Parameters
+    ----------
+    flux: float
+        integrated flux in erg/s/cm^2, or monochromatic flux in erg/s/cm^2/A
+    z: float
+        redshift
+    
+    Returns
+    -------
+    L: float
+        luminosity in erg/s, or monochromatic luminosity in erg/s/A
+    """
     cosmo = FlatLambdaCDM(H0=70, Om0=0.3)
-    DL = cosmo.luminosity_distance(z).value*10**6*3.08*10**18  # unit cm
-    L = flux*1.e-17*4.*np.pi*DL**2  # erg/s/A
+    D_L = cosmo.luminosity_distance(z).to('cm').value
+    L = flux * 1e-17 * 4 * np.pi * D_L**2  
+    # erg/s for integrated flux, erg/s/A for monochromatic flux
     return L
+
+
+def mbh_ha_only(fwhm, fwhm_err, LOGLHA, LOGLHA_ERR):
+    """
+    Calculate black hole mass using Halpha line width and luminosity
+        based on Greene & Ho 2005, ApJ, 630, 122
+    """
+    if fwhm * fwhm_err * LOGLHA * LOGLHA_ERR != 0:
+        ufwhm = ufloat(fwhm, fwhm_err)
+        uLHa = 10 ** ufloat(LOGLHA, LOGLHA_ERR)
+        mbh = 2e6 * (uLHa/1e42)**0.55 * (ufwhm/1000)**2.06
+        logmbh = log10(mbh)
+    else:
+        logmbh = ufloat(np.nan, np.nan)
+    return logmbh.n, logmbh.s
 
 
 def mbh_hb(fwhm, fwhm_err, L5100, L5100_err):
