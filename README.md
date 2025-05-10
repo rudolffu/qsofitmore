@@ -4,7 +4,7 @@ A python package for fitting UV-optical QSO spectra. This package is developed b
 
 ### Features  
 - Fit high-order (n_upper=6 to n_upper=50) Balmer emission line series using templates from Storey & Hummer (1995).
-- Add FeII template from Verner et al. (2009) within [2000, 12000] AA.
+- Add FeII template from Verner et al. (2009) within [2000, 10000] AA.
 - Reading non-SDSS spectra without plateid, mjd and fiberid. 
 - Narrow line measurements in the line MC process (which enables estimating uncertainties for narrow line parameters). 
 - Dust maps and extinction laws other than SFD98 and CCM. 
@@ -240,7 +240,7 @@ The Storey & Hummer (1995) Balmer emission line series templates are enabled by 
 
 
 ### Updates from v1.1.0 to v1.2.1:
-- Added the Verner et al. (2009) FeII template within [2000, 12000] AA.
+- Added the Verner et al. (2009) FeII template within [2000, 10000] AA.
 - Added the Storey & Hummer (1995) Balmer emission line series templates from n_upper=6 to n_upper=50.
 - Merged the `PyQSOFit.py` code into `fitmodule.py` to simplify the installation process. `qsofitmore` is now a standalone package with the same GNU license as `PyQSOFit`.
 

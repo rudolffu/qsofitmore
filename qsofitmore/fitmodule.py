@@ -592,26 +592,26 @@ class QSOFitNew:
         if self.broken_pl == True:
             f_pl = broken_pl_model(xval, pp[7], pp[14], pp[6])
         
-        if self.Fe_uv_op == True and self.Fe_verner09 == False:
+        if self.include_iron == True and self.Fe_verner09 == False:
             f_Fe_all = f_Fe_MgII+f_Fe_Balmer
-        elif self.Fe_uv_op == True and self.Fe_verner09 == True:
+        elif self.include_iron == True and self.Fe_verner09 == True:
             f_Fe_all = f_Fe_verner
         
-        if self.Fe_uv_op == True and self.poly == False and self.BC == False:
+        if self.include_iron == True and self.poly == False and self.BC == False:
             yval = f_pl+f_Fe_all
-        elif self.Fe_uv_op == True and self.poly == True and self.BC == False:
+        elif self.include_iron == True and self.poly == True and self.BC == False:
             yval = f_pl+f_Fe_all+f_poly
-        elif self.Fe_uv_op == True and self.poly == False and self.BC == True:
+        elif self.include_iron == True and self.poly == False and self.BC == True:
             yval = f_pl+f_Fe_all+f_conti_BC
-        elif self.Fe_uv_op == False and self.poly == True and self.BC == False:
+        elif self.include_iron == False and self.poly == True and self.BC == False:
             yval = f_pl+f_poly
-        elif self.Fe_uv_op == False and self.poly == False and self.BC == False:
+        elif self.include_iron == False and self.poly == False and self.BC == False:
             yval = f_pl
-        elif self.Fe_uv_op == False and self.poly == False and self.BC == True:
+        elif self.include_iron == False and self.poly == False and self.BC == True:
             yval = f_pl+f_conti_BC
-        elif self.Fe_uv_op == True and self.poly == True and self.BC == True:
+        elif self.include_iron == True and self.poly == True and self.BC == True:
             yval = f_pl+f_Fe_all+f_poly+f_conti_BC
-        elif self.Fe_uv_op == False and self.poly == True and self.BC == True:
+        elif self.include_iron == False and self.poly == True and self.BC == True:
             yval = f_pl+f_Fe_Balmer+f_poly+f_conti_BC
         else:
             raise RuntimeError('No this option for Fe_uv_op, poly and BC!')
@@ -805,12 +805,23 @@ class QSOFitNew:
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
             wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
-            broken_pl=False, Fe_uv_op=True, Fe_verner09=False,
+            broken_pl=False, include_iron=None, Fe_uv_op=True, Fe_verner09=False,
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, 
             save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None):
         self.mask_compname = mask_compname
+
+        # deprecate Fe_uv_op in favor of include_iron
+        if include_iron is None:
+            include_iron = Fe_uv_op
+            warnings.warn("'Fe_uv_op' is deprecated; please use 'include_iron' instead.",
+                          DeprecationWarning, stacklevel=2)
+        else:
+            if Fe_uv_op != include_iron:
+                warnings.warn("'Fe_uv_op' is deprecated and ignored when 'include_iron' is set.",
+                              DeprecationWarning, stacklevel=2)
+
         self.broken_pl = broken_pl
         self.name = name
         self.wave_range = wave_range
@@ -820,7 +831,8 @@ class QSOFitNew:
         self.npca_gal = npca_gal
         self.npca_qso = npca_qso
         self.initial_guess = initial_guess
-        self.Fe_uv_op = Fe_uv_op
+        self.include_iron = include_iron
+        self.Fe_uv_op = Fe_uv_op   # kept for backward‐compatibility
         self.Fe_verner09 = Fe_verner09
         self.Fe_flux_range = Fe_flux_range
         self.poly = poly
