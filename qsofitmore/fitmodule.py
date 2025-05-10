@@ -24,7 +24,6 @@ from astropy.modeling.models import BlackBody
 
 # Update resource paths
 datapath = pkg_resources.resource_filename('qsofitmore', '/data/')
-new_datapath = pkg_resources.resource_filename('qsofitmore', '/ext_data/')
 
 __all__ = ['QSOFitNew']
 
@@ -710,17 +709,17 @@ class QSOFitNew:
 
 
     def Fe_flux_verner(self, xval, pp):
-        "Fit the FeII on the continuum from 2000 to 12000 A based on Verner et al. (2009)"
+        "Fit the FeII on the continuum from 2000 to 10000 A based on Verner et al. (2009)"
         fe_verner = self.fe_verner
         yval = np.zeros_like(xval)
         wave_Fe = fe_verner[:, 0]
         flux_Fe = fe_verner[:, 1]*8e-7
-        ind = np.where((wave_Fe > 2000.) & (wave_Fe < 12000.), True, False)
+        ind = np.where((wave_Fe > 2000.) & (wave_Fe < 10000.), True, False)
         wave_Fe = wave_Fe[ind]
         flux_Fe = flux_Fe[ind]
         Fe_FWHM = pp[1]
         xval_new = xval*(1.0+pp[2])
-        ind = np.where((xval_new > 2000.) & (xval_new < 12000.), True, False)
+        ind = np.where((xval_new > 2000.) & (xval_new < 10000.), True, False)
         if np.sum(ind) > 100:
             if Fe_FWHM < 900.0:
                 sig_conv = np.sqrt(910.0**2-900.0**2)/2./np.sqrt(2.*np.log(2.))
