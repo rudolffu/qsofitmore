@@ -373,7 +373,8 @@ class QSOFitNew:
                 balmer_file = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE10.csv')
             self.df_balmer_series = pd.read_csv(balmer_file)
         else:
-            self.df_balmer_series = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE09.csv')
+            balmer_file = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE09.csv')
+            self.df_balmer_series = pd.read_csv(balmer_file)
         
         # do continuum fit--------------------------
         window_all = np.array(
