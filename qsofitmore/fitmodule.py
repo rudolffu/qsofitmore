@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import os
 import glob
 import warnings
 import matplotlib
@@ -356,12 +357,9 @@ class QSOFitNew:
             mjd = 0
         if self.plateid is None:
             fiberid = 0
-        # tmp_selfpath = self.path
-        # self.path = datapath
-        # global fe_uv, fe_op
-        self.fe_uv = np.genfromtxt(datapath+'fe_uv.txt')
-        self.fe_op = np.genfromtxt(datapath+'fe_optical.txt')
-        self.fe_verner = np.genfromtxt(new_datapath+'Fe_Verner.txt')
+        self.fe_uv = np.genfromtxt(os.path.join(datapath, 'iron_templates', 'fe_uv.txt'))
+        self.fe_op = np.genfromtxt(os.path.join(datapath, 'iron_templates','fe_optical.txt'))
+        self.fe_verner = np.genfromtxt(os.path.join(datapath, 'iron_templates','Fe_Verner_1micron.txt'))
         if self.BC == True:
             try:
                 print("N_e = 1E{}.".format(self.ne))
@@ -370,12 +368,12 @@ class QSOFitNew:
                 ne = 9
                 self.ne = ne
             if self.ne == 9:
-                balmer_file = new_datapath+'balmer_n6_n50_em_NE09.csv'
+                balmer_file = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE09.csv')
             elif self.ne == 10:
-                balmer_file = new_datapath+'balmer_n6_n50_em_NE10.csv'
+                balmer_file = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE10.csv')
             self.df_balmer_series = pd.read_csv(balmer_file)
         else:
-            self.df_balmer_series = pd.read_csv(new_datapath+'balmer_n6_n50_em_NE09.csv')
+            self.df_balmer_series = os.path.join(datapath, 'balmer', 'balmer_n6_n50_em_NE09.csv')
         
         # do continuum fit--------------------------
         window_all = np.array(
