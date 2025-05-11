@@ -81,6 +81,8 @@ class QSOFitNew:
         self.path = path    
         self.is_sdss = is_sdss
         self.in_rest_frame = in_rest_frame
+        # pivot for the power‐law continuum (default 3000 Å)
+        self.pl_pivot = 3000.0
 
 
     @classmethod
@@ -223,88 +225,8 @@ class QSOFitNew:
         if err is not None:
             err *= 1e17
         return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=name, plateid=plateid, 
-                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=False, in_rest_frame=in_rest_frame)
+                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=False, in_rest_frame=in_rest_frame) 
 
-    @classmethod
-    def fromcomb1d(cls, fname, redshift=None, path=None, plateid=None, mjd=None, fiberid=None, 
-                 ra=None, dec=None, telescope=None, in_rest_frame=False):
-        """
-        Initialize QSOFit object from a combined spectra
-        with two extensions, the first and second 
-        extensions of which are flux and flux errors
-        respectively.
-        Parameters:
-        ----------
-            fname : str
-                name of the fits file.
-            redshift : float
-                redshift of the spectrum. Should be provided if not recorded in the fits header.
-            path : str
-                working directory.
-        Returns:
-        ----------
-            cls : class
-                A QSOFitNew object.
-        Other parameters:
-        ----------
-            plateid, mjd, and fiberid: int
-                Default None for non-SDSS spectra.
-        Example:
-        ----------
-        q = QSOFitNew.fromcomb1d("custom_iraf_spectrum.fits", redshift=0.01, path=path)
-        """
-        hdu = fits.open(fname)
-        header = hdu[0].header
-        objname = header['object']
-        if redshift is None:
-            try:
-                redshift = float(header['redshift'])
-            except:
-                print("Redshift not provided, setting redshift to zero.")
-                redshift = 0
-        if ra is None or dec is None:
-            try:
-                ra = float(header['ra'])
-                dec = float(header['dec'])
-            except:
-                coord = SkyCoord(header['RA']+header['DEC'], 
-                                 frame='icrs',
-                                 unit=(u.hourangle, u.deg))
-                ra = coord.ra.value
-                dec = coord.dec.value
-        if 'J' in objname:
-            try:
-                name = designation(ra, dec, telescope)
-            except:
-                name = objname
-        else:
-            name = objname
-        if path is None:
-            path = './'
-        if mjd is None:
-            try:
-                mjd = float(header['mjd'])
-            except:
-                pass
-        CRVAL1 = float(header['CRVAL1'])
-        try:
-            CD1_1 = float(header['CD1_1'])
-        except:
-            CD1_1 = float(header['CDELT1'])
-        CRPIX1 = float(header['CRPIX1'])
-        W1 = (1-CRPIX1) * CD1_1 + CRVAL1
-        data = hdu[0].data
-        num_pt = len(data)
-        wave = np.linspace(W1, 
-                           W1 + (num_pt - 1) * CD1_1, 
-                           num=num_pt)
-        flux = data
-        err = hdu[1].data
-        hdu.close() 
-        flux *= 1e17
-        err *= 1e17
-        return cls(lam=wave, flux=flux, err=err, z=redshift, ra=ra, dec=dec, name=name, plateid=plateid, 
-                   mjd=mjd, fiberid=fiberid, path=path, is_sdss=False, in_rest_frame=in_rest_frame)
 
     def setmapname(self, mapname):
         """
@@ -347,6 +269,11 @@ class QSOFitNew:
             self.err = err_unred           
         return self.flux
 
+    def set_pl_pivot(self, pivot):
+        """
+        Set the pivot wavelength (Å) for f_{lambda} = (\lambda/\lambda_{\rm pivot})^{-alpha}
+        """
+        self.pl_pivot = float(pivot)
     
     def _DoContiFit(self, wave, flux, err, ra, dec, plateid, mjd, fiberid):
         """Fit the continuum with PL, Polynomial, UV/optical FeII, Balmer continuum"""
@@ -359,6 +286,7 @@ class QSOFitNew:
         self.fe_uv = np.genfromtxt(os.path.join(datapath, 'iron_templates', 'fe_uv.txt'))
         self.fe_op = np.genfromtxt(os.path.join(datapath, 'iron_templates','fe_optical.txt'))
         self.fe_verner = np.genfromtxt(os.path.join(datapath, 'iron_templates','Fe_Verner_1micron.txt'))
+        self.fe_nir = np.genfromtxt(os.path.join(datapath, 'iron_templates','Fe_G12_NIR.txt'))
         if self.BC == True:
             try:
                 print("N_e = 1E{}.".format(self.ne))
@@ -382,7 +310,9 @@ class QSOFitNew:
             #  [3775., 3832.], [3833., 3860.], [3890., 3960.],
             #  [4000., 4090.], [4115., 4260.],
              [4435., 4640.], [5100., 5535.], [6005., 6035.], [6110., 6250.], [6800., 7000.], [7160., 7180.],
-             [7500., 7800.], [8050., 8150.], [9750., 9800.], [11650., 11850.], [12000., 12480.],
+             [7500., 7800.], [8050., 8300.], [8580, 9000.], [9150, 9500.],
+             [9650., 9900.], [10180., 10700.],
+             [11050., 12480.]
              ])
         
         tmp_all = np.array([np.repeat(False, len(wave))]).flatten()
@@ -404,7 +334,7 @@ class QSOFitNew:
             pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5e3, 0., 0., 0., 0., -1.5])
         conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
         tmp_parinfo = [{'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
-                       {'limits': (0., 10.**10)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
+                       {'limits': (0., 10.**5)}, {'limits': (1200., 10000.)}, {'limits': (-0.01, 0.01)},
                        {'limits': (0., 10.**10)}, {'limits': (-5., 3.)}, 
                        {'limits': (0., 10.**10)}, {'limits': (2e3, 9e3)}, {'limits': (0., 10.**10)}, 
                        None, None, None, ]
@@ -423,10 +353,10 @@ class QSOFitNew:
         # to avoid the continuum windows falls within a BAL trough
         if self.rej_abs == True:
             if self.poly == True and self.broken_pl == False:
-                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/3000.0)**conti_fit.params[7]+self.F_poly_conti(
+                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/self.pl_pivot)**conti_fit.params[7]+self.F_poly_conti(
                     wave[tmp_all], conti_fit.params[11:14]))
             elif self.poly ==False and self.broken_pl == False:
-                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/3000.0)**conti_fit.params[7])
+                tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/self.pl_pivot)**conti_fit.params[7])
             elif self.poly == True and self.broken_pl == True:
                 tmp_conti = broken_pl_model(wave[tmp_all],
                                             conti_fit.params[7],
@@ -542,22 +472,27 @@ class QSOFitNew:
         f_fe_mgii_model = self.Fe_flux_mgii(wave, conti_fit.params[0:3])
         f_fe_balmer_model = self.Fe_flux_balmer(wave, conti_fit.params[3:6])
         f_fe_verner_model = self.Fe_flux_verner(wave, conti_fit.params[3:6])
-        f_pl_model = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]
+        f_fe_g12_model = self.Fe_flux_g12(wave, conti_fit.params[3:6])
+        f_pl_model = conti_fit.params[6]*(wave/self.pl_pivot)**conti_fit.params[7]
         if self.broken_pl == True:
             f_pl_model = broken_pl_model(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
         f_bc_model = self.Balmer_conti(wave, conti_fit.params[8]) + self.Balmer_high_order(wave, conti_fit.params[9:11])
         f_poly_model = self.F_poly_conti(wave, conti_fit.params[11:14])
-        if self.Fe_verner09 == True:
-            f_conti_model = (f_pl_model+f_fe_verner_model+f_poly_model+f_bc_model)
+        # build conti_model using iron_temp_name
+        if   self.iron_temp_name == "BG92-VW01":
+            fe_sum = f_fe_mgii_model + f_fe_balmer_model
+        elif self.iron_temp_name == "V09":
+            fe_sum = f_fe_verner_model
+        elif self.iron_temp_name == "G12":
+            fe_sum = f_fe_g12_model
         else:
-            f_conti_model = (f_pl_model+f_fe_mgii_model+f_fe_balmer_model+f_poly_model+f_bc_model)
+            raise RuntimeError(f"Unknown iron_temp_name='{self.iron_temp_name}'")
+        f_conti_model = f_pl_model + fe_sum + f_poly_model + f_bc_model
         line_flux = flux-f_conti_model
 
         self.f_conti_model = f_conti_model
         self.f_bc_model = f_bc_model
-        self.f_fe_uv_model = f_fe_mgii_model
-        self.f_fe_op_model = f_fe_balmer_model
-        self.f_fe_verner_model = f_fe_verner_model
+        self.f_fe_model = fe_sum
         self.f_pl_model = f_pl_model
         self.f_poly_model = f_poly_model
         self.line_flux = line_flux
@@ -583,8 +518,9 @@ class QSOFitNew:
         # iron flux for balmer line region
         f_Fe_Balmer = self.Fe_flux_balmer(xval, pp[3:6])
         f_Fe_verner = self.Fe_flux_verner(xval, pp[3:6])
+        f_Fe_g12 = self.Fe_flux_g12(xval, pp[3:6])
         # power-law continuum
-        f_pl = pp[6]*(xval/3000.0)**pp[7]
+        f_pl = pp[6]*(xval/self.pl_pivot)**pp[7]
         # Balmer continuum
         f_conti_BC = self.Balmer_conti(xval, pp[8]) + self.Balmer_high_order(xval, pp[9:11])
         # polynormal conponent for reddened spectra
@@ -592,26 +528,31 @@ class QSOFitNew:
         if self.broken_pl == True:
             f_pl = broken_pl_model(xval, pp[7], pp[14], pp[6])
         
-        if self.include_iron == True and self.Fe_verner09 == False:
-            f_Fe_all = f_Fe_MgII+f_Fe_Balmer
-        elif self.include_iron == True and self.Fe_verner09 == True:
-            f_Fe_all = f_Fe_verner
-        
-        if self.include_iron == True and self.poly == False and self.BC == False:
+        if self.include_iron:
+            if   self.iron_temp_name == "BG92-VW01":
+                f_Fe_all = f_Fe_MgII + f_Fe_Balmer
+            elif self.iron_temp_name == "V09":
+                f_Fe_all = f_Fe_verner
+            elif self.iron_temp_name == "G12":
+                f_Fe_all = f_Fe_g12
+            else:
+                raise RuntimeError(f"Unknown iron_temp_name='{self.iron_temp_name}'")
+
+        if self.include_iron and not self.poly and not self.BC:
             yval = f_pl+f_Fe_all
-        elif self.include_iron == True and self.poly == True and self.BC == False:
+        elif self.include_iron and self.poly and not self.BC:
             yval = f_pl+f_Fe_all+f_poly
-        elif self.include_iron == True and self.poly == False and self.BC == True:
+        elif self.include_iron and not self.poly and self.BC:
             yval = f_pl+f_Fe_all+f_conti_BC
-        elif self.include_iron == False and self.poly == True and self.BC == False:
-            yval = f_pl+f_poly
-        elif self.include_iron == False and self.poly == False and self.BC == False:
-            yval = f_pl
-        elif self.include_iron == False and self.poly == False and self.BC == True:
-            yval = f_pl+f_conti_BC
-        elif self.include_iron == True and self.poly == True and self.BC == True:
+        elif self.include_iron and self.poly and self.BC:
             yval = f_pl+f_Fe_all+f_poly+f_conti_BC
-        elif self.include_iron == False and self.poly == True and self.BC == True:
+        elif not self.include_iron and self.poly and not self.BC:
+            yval = f_pl+f_poly
+        elif not self.include_iron and not self.poly and not self.BC:
+            yval = f_pl
+        elif not self.include_iron and not self.poly and self.BC:
+            yval = f_pl+f_conti_BC
+        elif not self.include_iron and self.poly and self.BC:
             yval = f_pl+f_Fe_Balmer+f_poly+f_conti_BC
         else:
             raise RuntimeError('No this option for Fe_uv_op, poly and BC!')
@@ -636,8 +577,8 @@ class QSOFitNew:
             log10(\lambda L_{\lambda}), where \lambda = 1350, 3000, 5100 A 
             \lambda L_{\lambda}(1350) is also known as L1350, etc.
         """
-        conti_flux = pp[6]*(wave/3000.0)**pp[7]+self.F_poly_conti(wave, pp[11:14])
-        if self.broken_pl == True:
+        conti_flux = pp[6]*(wave/self.pl_pivot)**pp[7]+self.F_poly_conti(wave, pp[11:14])
+        if self.broken_pl:
             conti_flux = broken_pl_model(wave, pp[7], pp[14], pp[6]) + self.F_poly_conti(wave, pp[11:14])
         # plt.plot(wave,conti_flux)
         lamL = []
@@ -736,6 +677,41 @@ class QSOFitNew:
             yval[ind] = pp[0]*interpolate.splev(xval_new[ind], tck)
         return yval
 
+    def Fe_flux_g12(self, xval, pp):
+        "Fit the FeII on the continuum from 8100 to 11500 A based on Garcia-Rissmann+12."
+        fe_nir = self.fe_nir
+        yval = np.zeros_like(xval)
+
+        # raw template
+        wave_Fe = fe_nir[:, 0]
+        flux_Fe = fe_nir[:, 1] * 100 # normalization to 1 
+
+        # apply velocity shift
+        Fe_FWHM = pp[1]
+        xval_new = xval * (1.0 + pp[2])
+
+        # select model range
+        ind_wave = (wave_Fe >= 8100.) & (wave_Fe <= 11500.)
+        wave_Fe = wave_Fe[ind_wave]
+        flux_Fe = flux_Fe[ind_wave]
+
+        ind = (xval_new >= 8100.) & (xval_new <= 11500.)
+        if np.sum(ind) > 100:
+            if Fe_FWHM < 750.0:
+                sig_conv = np.sqrt(760.0**2 - 750.0**2) / (2. * np.sqrt(2.*np.log(2.)))
+            else:
+                sig_conv = np.sqrt(Fe_FWHM**2 - 750.0**2) / (2. * np.sqrt(2.*np.log(2.)))
+            sig_pix = sig_conv / 100 
+            khalfsz = int(np.round(4*sig_pix + 1))
+            xx = np.arange(0, khalfsz*2) - khalfsz
+            kernel = np.exp(-xx**2 / (2.*sig_pix**2))
+            kernel /= kernel.sum()
+
+            flux_conv = np.convolve(flux_Fe, kernel, mode='same')
+            tck = interpolate.splrep(wave_Fe, flux_conv)
+            yval[ind] = pp[0] * interpolate.splev(xval_new[ind], tck)
+
+        return yval
 
     def Balmer_conti(self, xval, pp):
         """Fit the Balmer continuum from the model of Dietrich+02"""
@@ -804,8 +780,9 @@ class QSOFitNew:
 
 
     def Fit(self, name=None, nsmooth=1, and_or_mask=True, reject_badpix=True, deredden=True, wave_range=None,
-            wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20, 
+            wave_mask=None, decomposition_host=True, BC03=False, Mi=None, npca_gal=5, npca_qso=20,
             broken_pl=False, include_iron=None, Fe_uv_op=True, Fe_verner09=False,
+            iron_temp_name=None,
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, 
@@ -822,6 +799,19 @@ class QSOFitNew:
                 warnings.warn("'Fe_uv_op' is deprecated and ignored when 'include_iron' is set.",
                               DeprecationWarning, stacklevel=2)
 
+        # deprecate Fe_verner09 in favor of iron_temp_name
+        if iron_temp_name is None:
+            if Fe_verner09:
+                iron_temp_name = "V09"
+                warnings.warn("'Fe_verner09' is deprecated; please use 'iron_temp_name' instead.",
+                              DeprecationWarning, stacklevel=2)
+            else:
+                iron_temp_name = "BG92-VW01"
+        else:
+            if Fe_verner09:
+                warnings.warn("'Fe_verner09' is deprecated and ignored when 'iron_temp_name' is set.",
+                              DeprecationWarning, stacklevel=2)
+
         self.broken_pl = broken_pl
         self.name = name
         self.wave_range = wave_range
@@ -832,8 +822,9 @@ class QSOFitNew:
         self.npca_qso = npca_qso
         self.initial_guess = initial_guess
         self.include_iron = include_iron
-        self.Fe_uv_op = Fe_uv_op   # kept for backward‐compatibility
-        self.Fe_verner09 = Fe_verner09
+        self.Fe_uv_op = Fe_uv_op           # for backward‐compat
+        self.Fe_verner09 = Fe_verner09     # for backward‐compat
+        self.iron_temp_name = iron_temp_name
         self.Fe_flux_range = Fe_flux_range
         self.poly = poly
         self.BC = BC
@@ -993,7 +984,7 @@ class QSOFitNew:
                                            conti_fit.params[14],
                                            conti_fit.params[6]) + self.F_poly_conti(wave, conti_fit.params[11:14])
         else:
-            self.PL_poly = conti_fit.params[6]*(wave/3000.0)**conti_fit.params[7]+self.F_poly_conti(wave, 
+            self.PL_poly = conti_fit.params[6]*(wave/self.pl_pivot)**conti_fit.params[7]+self.F_poly_conti(wave, 
                                                                                                     conti_fit.params[11:14])
         
         matplotlib.rc('xtick', labelsize=20)
@@ -1111,6 +1102,7 @@ class QSOFitNew:
                             va='top')
         
         ax.set_xlim(wave.min(), wave.max())
+        ax.minorticks_on()
         
         if linefit == True:
             ax.text(0.5, -1.45, r'Rest-frame wavelength ($\rm \AA$)', fontsize=22, transform=ax.transAxes,
@@ -1165,7 +1157,7 @@ class QSOFitNew:
         f_fe_mgii_model = self.Fe_flux_mgii(wave, pp[0:3])
         f_fe_balmer_model = self.Fe_flux_balmer(wave, pp[3:6])
         f_fe_verner_model = self.Fe_flux_verner(wave, pp[3:6])
-        f_pl_model = pp[6]*(wave/3000.0)**pp[7]
+        f_pl_model = pp[6]*(wave/self.pl_pivot)**pp[7]
         if self.broken_pl == True:
             f_pl_model = broken_pl_model(wave, pp[7], pp[14], pp[6])
         f_bc_model = self.Balmer_conti(wave, pp[8]) + self.Balmer_high_order(wave, pp[9:11])
@@ -1744,7 +1736,7 @@ class QSOFitNew:
             yy = self.Manygauss(xx, pp)
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
-            contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
+            contiflux = self.conti_fit.params[6]*(np.exp(xx)/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
                 np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
@@ -1821,7 +1813,7 @@ class QSOFitNew:
             yy = self.Manygauss(xx, pp)
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
-            contiflux = self.conti_fit.params[6]*(np.exp(xx)/3000.0)**self.conti_fit.params[7]+self.F_poly_conti(
+            contiflux = self.conti_fit.params[6]*(np.exp(xx)/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
                 np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
@@ -1868,7 +1860,7 @@ class QSOFitNew:
 
     def F_poly_conti(self, xval, pp):
         """Fit the continuum with a polynomial component account for the dust reddening with a*X+b*X^2+c*X^3"""
-        xval2 = xval-3000.
+        xval2 = xval-self.pl_pivot
         yval = 0.*xval2
         for i in range(len(pp)):
             yval = yval+pp[i]*xval2**(i+1)
