@@ -874,12 +874,7 @@ class QSOFitNew:
         if save_fig == True and save_fig_path == None:
             save_fig_path = self.path
         if save_fits_name == None:
-            if self.sdss_name == '':
-                save_fits_name = 'result'
-            else:
-                save_fits_name = self.sdss_name
-        else:
-            save_fits_name = save_fits_name
+            save_fits_name = f'res_qsofitmore_{self.sdss_name}.fits'        
         
         # deal with pixels with error equal 0 or inifity
         ind_gooderror = np.where((self.err != 0) & ~np.isinf(self.err), True, False)
@@ -972,7 +967,7 @@ class QSOFitNew:
         if 'Ha_whole_br_area_err' in self.all_result_name:
             t['LOGLHA_ERR'] = np.abs(t['Ha_whole_br_area_err'] / (t['Ha_whole_br_area'] * np.log(10)))
         self.result_table = t
-        t.write(save_fits_path+save_fits_name+'.fits', format='fits', overwrite=True)
+        t.write(save_fits_path+save_fits_name, format='fits', overwrite=True)
 
 
     def _PlotFig(self, ra, dec, z, wave, flux, err, decomposition_host, linefit, tmp_all, gauss_result, f_conti_model,
@@ -1114,8 +1109,8 @@ class QSOFitNew:
             plt.ylabel(r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
         
         if self.save_fig == True:
-            plt.savefig(save_fig_path+self.sdss_name+'.pdf', bbox_inches='tight')
-            plt.savefig(save_fig_path+self.sdss_name+'.jpg', dpi=300, bbox_inches='tight')
+            plt.savefig(save_fig_path+f'plot_fit_{self.sdss_name}.pdf', bbox_inches='tight')
+            plt.savefig(save_fig_path+f'plot_fit_{self.sdss_name}.jpg', dpi=300, bbox_inches='tight')
         # plt.show()
         # plt.close()
     
