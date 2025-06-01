@@ -58,7 +58,7 @@ python -m pip install -e .
 
 ## 2. Tutorial
  
-This tutorial can be run under `examples` directory of `qsofitmore`. For basics of `PyQSOFit`, see https://github.com/legolason/PyQSOFit/blob/master/example/example.ipynb
+This tutorial can be run under `examples` directory of `qsofitmore`. 
 
 ### 2.1 Generate line parameter file
 
