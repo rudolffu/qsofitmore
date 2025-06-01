@@ -1,5 +1,5 @@
 # QSOFITMORE
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.5810042.svg)](https://doi.org/10.5281/zenodo.5810042)  
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.15571037.svg)](https://doi.org/10.5281/zenodo.15571037)  
 A python package for fitting UV-optical QSO spectra. This package is developed based on [`PyQSOFit`](https://github.com/legolason/PyQSOFit) (v1.1), with some additional features for the LAMOST quasar survey ([Jin et al. 2023](https://ui.adsabs.harvard.edu/abs/2023ApJS..265...25J/abstract)) and the survey for quasars behind the Galactic plane ([Fu et al. 2022](https://ui.adsabs.harvard.edu/abs/2022ApJS..261...32F/abstract)). `qsofitmore` is now a standalone package with the same GNU license as `PyQSOFit`. For the latest version of `PyQSOFit`, please see https://github.com/legolason/PyQSOFit. 
 
 ### Features  
