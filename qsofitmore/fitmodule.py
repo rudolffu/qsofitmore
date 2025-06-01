@@ -427,11 +427,6 @@ class QSOFitNew:
                 self.conti_result_name = np.concatenate((self.conti_result_name, 
                                                          'PL_slope2', 
                                                          'PL_slope2_err'), axis=None)                                         
-            # for iii in range(Fe_flux_result.shape[0]):
-            #     self.conti_result = np.append(self.conti_result, [Fe_flux_result[iii], Fe_flux_std[iii]])
-            #     self.conti_result_type = np.append(self.conti_result_type, [Fe_flux_type[iii], Fe_flux_type[iii]])
-            #     self.conti_result_name = np.append(self.conti_result_name,
-            #                                        [Fe_flux_name[iii], Fe_flux_name[iii]+'_err'])
         else:
             self.conti_result = np.array(
                 [ra, dec, str(plateid), str(mjd), str(fiberid), self.z, SNR_SPEC, self.SN_ratio_conti, conti_fit.params[0],
@@ -813,6 +808,8 @@ class QSOFitNew:
                               DeprecationWarning, stacklevel=2)
 
         self.broken_pl = broken_pl
+        if name is None:
+            name = self.name
         self.name = name
         self.wave_range = wave_range
         self.wave_mask = wave_mask
@@ -854,19 +851,9 @@ class QSOFitNew:
             Fe_uv_op=True
         
         # get the source name in plate-mjd-fiber, if no then None
-        if name is None:
-            if np.array([self.plateid, self.mjd, self.fiberid]).any() is not None:
-                self.sdss_name = str(self.plateid).zfill(4)+'-'+str(self.mjd)+'-'+str(self.fiberid).zfill(4)
-            else:
-                if self.plateid is None:
-                    self.plateid = 0
-                if self.mjd is None:
-                    self.mjd = 0
-                if self.fiberid is None:
-                    self.fiberid = 0
-                self.sdss_name = ''
-        else:
-            self.sdss_name = name
+        if self.name is None and (self.plateid is not None or self.mjd is not None or self.fiberid is not None):
+            self.sdss_name = str(self.plateid).zfill(4)+'-'+str(self.mjd)+'-'+str(self.fiberid).zfill(4)
+            self.name = self.sdss_name
         
         # set default path for figure and fits
         if save_result == True and save_fits_path == None:
@@ -874,7 +861,7 @@ class QSOFitNew:
         if save_fig == True and save_fig_path == None:
             save_fig_path = self.path
         if save_fits_name == None:
-            save_fits_name = f'res_qsofitmore_{self.sdss_name}.fits'        
+            save_fits_name = f'res_qsofitmore_{self.name}.fits'        
         
         # deal with pixels with error equal 0 or inifity
         ind_gooderror = np.where((self.err != 0) & ~np.isinf(self.err), True, False)
@@ -1042,11 +1029,11 @@ class QSOFitNew:
                                    figsize=(15, 8))  # if no lines are fitted, there would be only one row
         
         if self.ra == -999. or self.dec == -999.:
-            ax.set_title(str(self.sdss_name)+'   z = '+str(np.round(z, 4)), fontsize=20)
+            ax.set_title(str(self.name)+'   z = '+str(np.round(z, 4)), fontsize=20)
         else:
-            # ax.set_title('ra,dec = ('+str(ra)+','+str(dec)+')   '+str(self.sdss_name)+'   $z$ = '+str(np.round(z, 4)),
+            # ax.set_title('ra,dec = ('+str(ra)+','+str(dec)+')   '+str(self.name)+'   $z$ = '+str(np.round(z, 4)),
                         #  fontsize=20)
-            ax.set_title('ra, dec = ({:.6f}, {:.6f})   {}    $z$ = {:.4f}'.format(ra, dec, self.sdss_name.replace('_',' '), z),
+            ax.set_title('ra, dec = ({:.6f}, {:.6f})   {}    $z$ = {:.4f}'.format(ra, dec, self.name.replace('_',' '), z),
                          fontsize=20)
         
         ax.plot(self.wave_prereduced, self.flux_prereduced, 'k', label='data', zorder=2)
@@ -1109,8 +1096,8 @@ class QSOFitNew:
             plt.ylabel(r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
         
         if self.save_fig == True:
-            plt.savefig(save_fig_path+f'plot_fit_{self.sdss_name}.pdf', bbox_inches='tight')
-            plt.savefig(save_fig_path+f'plot_fit_{self.sdss_name}.jpg', dpi=300, bbox_inches='tight')
+            plt.savefig(save_fig_path+f'plot_fit_{self.name}.pdf', bbox_inches='tight')
+            plt.savefig(save_fig_path+f'plot_fit_{self.name}.jpg', dpi=300, bbox_inches='tight')
         # plt.show()
         # plt.close()
     
