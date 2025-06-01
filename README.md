@@ -68,24 +68,29 @@ The following script of generating `qsopar.fits` is based on https://github.com/
 ```python
 import numpy as np
 from astropy.io import fits
+from astropy.table import Table
 path='./output/'
 
-newdata = np.rec.array([(6564.61,'Ha',6400.,6800.,'Ha_br',3,5e-3,0.004,0.017,0.015,0,0,0,0.05),\
+newdata = np.rec.array([(6564.61,'Ha',6400.,6800.,'Ha_br',3,5e-3,0.003,0.01,0.005,0,0,0,0.05),\
                         (6564.61,'Ha',6400.,6800.,'Ha_na',1,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
                         (6549.85,'Ha',6400.,6800.,'NII6549',1,1e-3,2.3e-4,0.0017,5e-3,1,1,1,0.001),\
                         (6585.28,'Ha',6400.,6800.,'NII6585',1,1e-3,2.3e-4,0.0017,5e-3,1,1,1,0.003),\
                         (6718.29,'Ha',6400.,6800.,'SII6718',1,1e-3,2.3e-4,0.0017,5e-3,1,1,2,0.001),\
-                        (6732.67,'Ha',6400.,6800.,'SII6732',1,1e-3,2.3e-4,0.0017,5e-3,1,1,2,0.001),\ 
-                        (4862.68,'Hb',4640.,5100.,'Hb_br',3,5e-3,0.004,0.022,0.01,0,0,0,0.01),\
+                        (6732.67,'Ha',6400.,6800.,'SII6732',1,1e-3,2.3e-4,0.0017,5e-3,1,1,2,0.001),\
+                        (4862.68,'Hb',4640.,5100.,'Hb_br',3,5e-3,0.003,0.01,0.003,0,0,0,0.01),\
                         (4862.68,'Hb',4640.,5100.,'Hb_na',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.002),\
                         (4960.30,'Hb',4640.,5100.,'OIII4959',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.002),\
                         (5008.24,'Hb',4640.,5100.,'OIII5007',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.004),\
-                        # (4960.30,'Hb',4640.,5100.,'OIII4959w',1,3e-3,2.3e-4,0.002,0.01,1,1,0,0.001),\
-                        # (5008.24,'Hb',4640.,5100.,'OIII5007w',1,3e-3,2.3e-4,0.002,0.01,1,1,0,0.002),\
-                        (2798.75,'MgII',2700.,2900.,'MgII_br',1,5e-3,0.004,0.015,0.0017,0,0,0,0.05),\
-                        (2798.75,'MgII',2700.,2900.,'MgII_na',2,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
+                        (4955.30,'Hb',4640.,5100.,'OIII4959w',1,1e-3,2.3e-4,0.0017,0.01,2,2,0,0.001),\
+                        (4995.24,'Hb',4640.,5100.,'OIII5007w',1,1e-3,2.3e-4,0.0017,0.01,2,2,0,0.002),\
+                        (4341.68,'Hg',4250.,4440.,'Hg_br',1,5e-3,0.004,0.025,0.0017,0,0,0,0.05),\
+                        (4341.68,'Hg',4250.,4440.,'Hg_na',1,1e-3,2.3e-4,0.0017,5e-3,1,1,0,0.001),\
+                        (3728.48,'OII',3650.,3800.,'OII3728',1,1e-3,3.333e-4,0.0017,0.01,1,1,0,0.001),\
+                        (3426.84,'NeV',3380.,3480.,'NeV3426',1,1e-3,3.333e-4,0.0017,0.005,0,0,0,0.001),\
+                        (2798.75,'MgII',2700.,2900.,'MgII_br',2,5e-3,0.004,0.015,0.0017,0,0,0,0.05),\
+                        (2798.75,'MgII',2700.,2900.,'MgII_na',1,1e-3,2.3e-4,0.0017,0.01,0,0,0,0.002),\
                         (1908.73,'CIII',1700.,1970.,'CIII_br',2,5e-3,0.004,0.015,0.015,99,0,0,0.01),\
-                        (1549.06,'CIV',1500.,1700.,'CIV_br',2,5e-3,0.004,0.015,0.015,0,0,0,0.05),\
+                        (1549.06,'CIV',1500.,1700.,'CIV_br',3,5e-3,0.004,0.015,0.015,0,0,0,0.05),\
                         ],\
                      formats='float32,a20,float32,float32,a20,float32,float32,float32,float32,\
                      float32,float32,float32,float32,float32',\
@@ -104,7 +109,7 @@ hdr['vindex'] = 'Entries w/ same NONZERO vindex constrained to have same velocit
 hdr['windex'] = 'Entries w/ same NONZERO windex constrained to have same width'
 hdr['findex'] = 'Entries w/ same NONZERO findex have constrained flux ratios'
 hdr['fvalue'] = 'Relative scale factor for entries w/ same findex'
-#------save line info-----------
+#------create fits table-------
 hdu = fits.BinTableHDU(data=newdata,header=hdr,name='data')
 hdu.writeto(path+'qsopar.fits',overwrite=True)
 ```
@@ -130,11 +135,11 @@ path = "./output/"
 ### 2.3 Initialise an instance of `QSOFitNew` from a custom spectrum 
 
 #### a) From numpy-array like data 
-We can read an example spectrum in csv format using `pandas`, and load the data to `QSOFitNew` manually. The data should contain wavelength (in Å), flux and flux error (both in 10^{-17} erg/s/cm^2/Å). In this example, I have already converted the flux and error to 10^{-17} erg/s/cm^2/Å. The object of interest is UGC 3374, which has z=0.02004, ra=88.72336906, and dec=46.43934051.
+We can read an example spectrum in csv format using `pandas`, and load the data to `QSOFitNew` manually. The data should contain wavelength (in Å), flux and flux error. In this example, the flux and error are in the unit of erg/s/cm^2/Å. Because the code assumes the flux is in unit of 10^-17 erg/s/cm^2/Å, we need to multiply the flux and error by 1e17. The redshift, RA, DEC, and name of the quasar are also required. The `is_sdss` parameter is set to `False` because this spectrum is not from SDSS. The object `J001554.18+560257.5` is from the suvey for quasars behind the Galactic plane ([Fu et al. 2022](https://ui.adsabs.harvard.edu/abs/2022ApJS..261...32F/abstract)), and was observed with the 2.4m Lijiang Telescope (LJT) in China. The `path` parameter is set to the output path where the fits file and plots will be saved.
 
 
 ```python
-df = pd.read_csv("./data/UGC_3374_ccds.csv")
+df = pd.read_csv("./data/spec_J001554.18+560257.5_LJT.csv")
 ```
 
 
@@ -142,30 +147,31 @@ df = pd.read_csv("./data/UGC_3374_ccds.csv")
 df
 ```
 
-|      | lam         | flux       | err       |
-|------|-------------|------------|-----------|
-| 0    | 3713.125682 | 575.093933 | 15.692233 |
-| 1    | 3716.174602 | 595.614136 | 16.098293 |
-| 2    | 3719.223522 | 583.948425 | 15.944775 |
-| 3    | 3722.272442 | 596.417175 | 15.941905 |
-| 4    | 3725.321363 | 599.870239 | 15.927223 |
-| ...  | ...         | ...        | ...       |
-| 1165 | 7265.117806 | 399.388733 | 7.409341  |
-| 1166 | 7268.166726 | 385.701477 | 7.304856  |
-| 1167 | 7271.215646 | 372.931519 | 7.231922  |
-| 1168 | 7274.264566 | 395.445251 | 7.496907  |
-| 1169 | 7277.313487 | 426.522888 | 7.874022  |
 
-1170 rows × 3 columns
+| Index | lam         | flux         | err          |
+|-------|-------------|--------------|--------------|
+| 0     | 3665.797515 | 7.947896e-16 | 1.031744e-16 |
+| 1     | 3668.657947 | 9.944345e-16 | 1.128481e-16 |
+| 2     | 3671.518379 | 7.201746e-16 | 1.086394e-16 |
+| 3     | 3674.378811 | 7.498753e-16 | 1.073345e-16 |
+| 4     | 3677.239243 | 8.567060e-16 | 1.078132e-16 |
+| ...   | ...         | ...          | ...          |
+| 1895  | 9086.315977 | 3.270070e-16 | 3.116500e-17 |
+| 1896  | 9089.176409 | 3.494074e-16 | 3.172321e-17 |
+| 1897  | 9092.036841 | 3.376591e-16 | 3.185541e-17 |
+| 1898  | 9094.897273 | 2.639512e-16 | 3.125944e-17 |
+| 1899  | 9097.757705 | 3.047675e-16 | 3.164424e-17 |
+
+1900 rows × 3 columns
 
 
 
 
 
 ```python
-q = QSOFitNew(lam=df.lam, flux=df.flux, err=df.err, 
-              z=0.02004, ra=88.72336906, dec=46.43934051,
-              name='UGC_3374', is_sdss=False, path=path)
+q = QSOFitNew(lam=df.lam, flux=df.flux*1e17, err=df.err*1e17, 
+              z=0.1684, ra=3.97576206, dec=56.04931383,
+              name='J001554.18+560257.5', is_sdss=False, path=path)
 ```
 
 #### b) From IRAF multispec
@@ -180,14 +186,16 @@ You can simply load the data with the classmethod `QSOFitNew.fromiraf`, which do
 
 
 ```python
-q = QSOFitNew.fromiraf("./data/UGC_3374_ccds.fits",redshift=0.02004,telescope='1.3m',path=path)
+q = QSOFitNew.fromiraf(
+      "./data/spec_J001554.18+560257.5_LJT.fits",
+      redshift=0.1684, telescope='LJT', path=path)
 ```
 
 
 ### 2.4 Fit the spectrum 
 
 #### Choose a dust map  
-The code supports three Galactic‐extinction maps:
+The code supports three Galactic extinction maps:
 
  - `"sfd"`: Schlegel, Finkbeiner & Davis (1998) dust map  (this is the default)  
  - `"planck"` or `"planck16"`: Planck GNILC dust map (Planck Collaboration 2016)  
@@ -221,19 +229,22 @@ Derived quantities of narrow and broad lines, including FWHM, sigma, EW, and int
 
 
 ```python
-q.Fit(name = None,
+q.setmapname("planck")
+q.Fit(name              = 'J001554.18+560257.5_LJT_ADV',
       deredden          = True,
       wave_range        = None,
       wave_mask         = None,
+      Fe_flux_range     = [4434, 4684] , # Wavelength range of FeII flux saved to the output file
       decomposition_host= True,
       Mi                = None,
       npca_gal          = 5,
       npca_qso          = 20,
-      include_iron      = True,                   # enable FeII fitting
-      iron_temp_name    = "BG92-VW01",            # options: "BG92-VW01", "V09", "G12"
-      poly              = True,
-      BC                = False,
-      MC                = True,
+      include_iron      = True,          # enable FeII fitting
+      iron_temp_name    = "V09",         # options: "BG92-VW01", "V09", "G12"
+      poly              = False,
+      broken_pl         = True,          # enable broken power-law
+      BC                = True,          # enable Balmer continuum and high-order Balmer lines
+      MC                = True,         # optional: enable Monte Carlo error estimation
       n_trails          = 20,
       linefit           = True,
       tie_lambda        = True,
@@ -244,19 +255,17 @@ q.Fit(name = None,
       plot_fig          = True,
       save_fig          = True,
       plot_line_name    = True,
-      plot_legend       = False,
-      # save_fig_path   = figpath,
-      # save_fits_path  = respath,
+      plot_legend       = True,
       save_fits_name    = None)
 ```
 
     
-![jpg](qsofitmore/examples/output/UGC_3374.jpg)
+![jpg](qsofitmore/examples/output/plot_fit_J001554.18+560257.5_LJT_ADV.jpg)
     
 
 #### Print fitting results
 Try: 
-`q.all_result_name`, `q.all_result`, `q.na_line_result`, `q.conti_result_name`, `q.gauss_result_name`
+`q.result_table`
 
 
 
