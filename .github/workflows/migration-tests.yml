@@ -40,7 +40,7 @@ jobs:
     
     - name: Install cython for kapteyn
       run: |
-        pip install cython
+        pip install "cython<3.0"
     
     - name: Install kapteyn
       run: |
@@ -107,7 +107,7 @@ jobs:
     
     - name: Install dependencies (both kmpfit and lmfit)
       run: |
-        pip install cython
+        pip install "cython<3.0"
         pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
         pip install pytest pytest-cov pytest-benchmark
         pip install -e .[dev]
@@ -174,7 +174,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install cython
+        pip install "cython<3.0"
         pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
         pip install pytest pytest-benchmark
         pip install -e .[dev]
@@ -247,7 +247,7 @@ jobs:
     
     - name: Install dependencies
       run: |
-        pip install cython
+        pip install "cython<3.0"
         pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
         pip install pytest pytest-cov
         pip install -e .[dev]
