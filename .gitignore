@@ -128,8 +128,17 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-$ vscode settings
+# Migration testing artifacts
+dustmaps_data/
+*_benchmark.json
+test_outputs/
+
+# Claude Code
+.claude/
+CLAUDE.md
+
+# vscode settings
 .vscode*
 
-$ Mac OS
+# Mac OS
 .DS_Store
