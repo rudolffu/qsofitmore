@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 from scipy import interpolate
 from scipy import integrate
 from kapteyn import kmpfit
-from PyAstronomy import pyasl
 from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 from astropy.table import Table
@@ -250,7 +249,8 @@ class QSOFitNew:
             self.ebv = getebv(self.ra, self.dec, mapname=self.mapname, map_dir=dustmap_path)
             zero_flux = np.where(flux == 0, True, False)
             flux[zero_flux] = 1e-10
-            flux_unred = pyasl.unred(lam, flux, self.ebv)
+            Alam = f99law(self.lam, self.ebv)
+            flux_unred = deredden(Alam, self.flux)
             err_unred = err*flux_unred/flux
             flux_unred[zero_flux] = 0
             del self.flux, self.err
@@ -986,19 +986,19 @@ class QSOFitNew:
                 mc_flag = 1
             
             lines_total = np.zeros_like(wave)
+            na_lines_total = np.zeros_like(wave)
             line_order = {'r': 3, 'g': 7}  # to make the narrow line plot above the broad line
             
             temp_gauss_result = gauss_result
             for p in range(int(len(temp_gauss_result)/mc_flag/3)):
                 # warn that the width used to separate narrow from broad is not exact 1200 km s-1 which would lead to wrong judgement
                 # if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
+                line_single = self.Onegauss(np.log(wave), temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag])
                 if temp_gauss_result[(2+p*3)*mc_flag] - 0.0017 <= 1e-10:    
                     color = 'g'
+                    na_lines_total += line_single
                 else:
                     color = 'r'
-                
-                line_single = self.Onegauss(np.log(wave), temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag])
-                
                 ax.plot(wave, line_single+f_conti_model, color=color, zorder=5)
                 for c in range(self.ncomp):
                     axn[1][c].plot(wave, line_single, color=color, zorder=line_order[color])
@@ -1007,6 +1007,7 @@ class QSOFitNew:
             ax.plot(wave, lines_total+f_conti_model, 'b', label='line',
                     zorder=6)  # supplement the emission lines in the first subplot
             self.lines_total = lines_total
+            self.na_lines_total = na_lines_total
             for c, linecompname in enumerate(uniq_linecomp_sort):
                 tname = texlinename(linecompname)
                 axn[1][c].plot(wave, lines_total, color='b', zorder=10)
@@ -2123,7 +2124,20 @@ class QSOFitNew:
         flux, and error.
         """
         # -----remove bad pixels, but not for high SN spectrum------------
-        ind_bad = pyasl.pointDistGESD(flux, 10)
+        # Alternative outlier detection using modified z-score method
+        median_flux = np.nanmedian(flux)
+        mad = np.nanmedian(np.abs(flux - median_flux))
+        modified_z_scores = 0.6745 * (flux - median_flux) / mad
+        outlier_threshold = 3.5
+        outlier_indices = np.where(np.abs(modified_z_scores) > outlier_threshold)[0]
+        
+        # Limit to 10 most extreme outliers (similar to original GESD behavior)
+        if len(outlier_indices) > 10:
+            outlier_scores = np.abs(modified_z_scores[outlier_indices])
+            top_outliers = np.argsort(outlier_scores)[-10:]
+            outlier_indices = outlier_indices[top_outliers]
+        
+        ind_bad = ([], outlier_indices)
         wv = np.asarray([i for j, i in enumerate(lam) if j not in ind_bad[1]], dtype=np.float64)
         fx = np.asarray([i for j, i in enumerate(flux) if j not in ind_bad[1]], dtype=np.float64)
         er = np.asarray([i for j, i in enumerate(err) if j not in ind_bad[1]], dtype=np.float64)

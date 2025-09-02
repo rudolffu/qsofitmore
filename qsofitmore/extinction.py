@@ -46,6 +46,67 @@ def wang2019(wave, ebv, waveunit=u.AA, Rv=3.1):
     Alam = Alam_over_Av * Av
     return Alam
 
+def f99law(wave, ebv, waveunit=u.AA, Rv=3.1):
+    """
+    Extinction function given by the law from Fitzpatrick (1999).
+    Parameters
+    ----------
+    wave : numpy.ndarray (1-d) 
+        Wavelengths.
+    ebv : float
+        E(B-V) in magnitude.
+    waveunit : astropy.units.Quantity
+        Unit of the wavelengths.
+    Rv : float
+        Default: 3.1.
+    Returns
+    -------  
+    Alam : numpy.ndarray (1-d)
+        Extinction in magnitudes.
+    Paper information
+    -------  
+    bibcode: 1999PASP..111...63F
+    doi: 10.1086/316293
+    adsurl: https://ui.adsabs.harvard.edu/abs/1999PASP..111...63F/abstract
+    """
+    
+    Av = Rv * ebv
+    uwave = wave * waveunit
+    x = 1.0 / uwave.to(u.micron).value  # Convert to inverse microns
+    
+    # Initialize extinction curve
+    k = np.zeros_like(x)
+    
+    # IR - Optical: 0.3 <= x <= 1.1
+    ir_opt = (x >= 0.3) & (x <= 1.1)
+    if np.any(ir_opt):
+        k[ir_opt] = 1.0 + 0.17699 * (x[ir_opt] - 1.82) - 0.50447 * (x[ir_opt] - 1.82)**2 - \
+                    0.02427 * (x[ir_opt] - 1.82)**3 + 0.72085 * (x[ir_opt] - 1.82)**4 + \
+                    0.01979 * (x[ir_opt] - 1.82)**5 - 0.77530 * (x[ir_opt] - 1.82)**6 + \
+                    0.32999 * (x[ir_opt] - 1.82)**7
+    
+    # UV: 1.1 < x <= 3.3
+    uv = (x > 1.1) & (x <= 3.3)
+    if np.any(uv):
+        y = x[uv] - 1.82
+        k[uv] = 1.0 + 0.104 * y - 0.609 * y**2 + 0.701 * y**3 + 1.137 * y**4 - \
+                1.718 * y**5 - 0.827 * y**6 + 1.647 * y**7 - 0.505 * y**8
+    
+    # Far-UV: 3.3 < x <= 8.0
+    fuv = (x > 3.3) & (x <= 8.0)
+    if np.any(fuv):
+        y = x[fuv]
+        k[fuv] = 1.752 - 0.316 * y - 0.104 / ((y - 4.67)**2 + 0.341)
+    
+    # Extrapolation to 8.0 < x <= 11.0 (down to 912 Angstroms)
+    ext = x > 8.0
+    if np.any(ext):
+        y = x[ext]
+        k[ext] = 1.752 - 0.316 * y - 0.104 / ((y - 4.67)**2 + 0.341)
+    
+    Alam = k * Av
+    return Alam
+
 
 def getebv(ra, dec, mapname='planck', map_dir=None):
     """

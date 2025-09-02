@@ -6,10 +6,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 requirements = [
-    "sfdmap",
-    "PyAstronomy",
     "uncertainties",
-    "astropy>=4.3"]
+    "astropy>=5.0"]
 
 setuptools.setup(
     name="qsofitmore", 
@@ -28,5 +26,5 @@ setuptools.setup(
         "Operating System :: OS Independent",
     ],
     install_requires=requirements,
-    python_requires='>=3.6',
+    python_requires='>=3.8',
 )
