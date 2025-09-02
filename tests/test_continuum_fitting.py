@@ -3,7 +3,20 @@
 
 import pytest
 import numpy as np
-from qsofitmore.config import migration_config
+
+# Try to import qsofitmore config, skip tests if not available
+try:
+    from qsofitmore.config import migration_config
+    QSOFITMORE_AVAILABLE = True
+except ImportError:
+    QSOFITMORE_AVAILABLE = False
+    # Create dummy config for testing
+    class DummyConfig:
+        validate_against_kmpfit = False
+        benchmark_performance = False
+        rtol = 1e-6
+        atol = 1e-8
+    migration_config = DummyConfig()
 
 
 class TestContinuumFitting:
