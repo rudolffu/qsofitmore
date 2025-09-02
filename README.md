@@ -18,7 +18,6 @@ Dependencies:
 astropy
 kapteyn (depends on cython)
 dustmaps
-PyAstronomy
 uncertainties
 ```
 
@@ -26,13 +25,13 @@ Assuming you have anaconda installed (`astropy` included), the following steps d
 
 Install [`kapteyn`](https://www.astro.rug.nl/software/kapteyn/):  
 ```
-pip install cython
+pip install "cython<3.0"
 pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
 ```
 
-Install `dustmaps`, `uncertainties`, and `PyAstronomy`:
+Install `dustmaps`, `uncertainties`:
 ```
-pip install dustmaps uncertainties PyAstronomy
+pip install dustmaps uncertainties
 ```
 
 Download the SFD98 dust map:

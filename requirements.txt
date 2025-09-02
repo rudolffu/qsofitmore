@@ -7,6 +7,7 @@ pandas
 uncertainties
 
 # Fitting libraries
+cython<3.0
 kapteyn  # TODO: Remove after migration to lmfit is complete
 lmfit>=1.3.0  # New dependency for migration from kapteyn.kmpfit
 
@@ -14,4 +15,3 @@ lmfit>=1.3.0  # New dependency for migration from kapteyn.kmpfit
 dustmaps
 
 # Astronomy utilities  
-PyAstronomy
