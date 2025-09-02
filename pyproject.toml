@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "qsofitmore"
+version = "1.2.2"
+description = "QSO fitting tool with advanced features"
+readme = "README.md"
+license = {text = "GNU General Public License v3.0"}
+authors = [
+    {name = "Yuming Fu", email = "fuympku@outlook.com"},
+]
+maintainers = [
+    {name = "Yuming Fu", email = "fuympku@outlook.com"},
+]
+keywords = ["astronomy", "quasar", "spectroscopy", "fitting"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: GNU General Public License v3.0",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Topic :: Scientific/Engineering :: Astronomy",
+]
+requires-python = ">=3.8"
+dependencies = [
+    "numpy",
+    "scipy",
+    "matplotlib",
+    "astropy",
+    "pandas",
+    "kapteyn",
+    "dustmaps",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "black",
+    "flake8",
+]
+
+[project.urls]
+Homepage = "https://github.com/rudolffu/qsofitmore"
+Repository = "https://github.com/rudolffu/qsofitmore"
+Documentation = "https://github.com/rudolffu/qsofitmore/blob/main/README.md"
+"Bug Tracker" = "https://github.com/rudolffu/qsofitmore/issues"
+
+[tool.setuptools]
+packages = ["qsofitmore"]
+include-package-data = true
+
+[tool.setuptools.package-data]
+qsofitmore = ["data/**/*"]
