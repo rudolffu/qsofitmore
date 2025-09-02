@@ -135,7 +135,6 @@ test_outputs/
 
 # Claude Code
 .claude/
-CLAUDE.md
 
 # vscode settings
 .vscode*
