@@ -17,10 +17,7 @@ from astropy import units as u
 from astropy import constants as ac
 from .extinction import *
 from .auxmodule import *
-try:
-    from importlib.resources import files
-except ImportError:
-    # Python < 3.9 fallback
+    # Fallback for Python < 3.9
     from importlib_resources import files
 import pandas as pd
 from astropy.modeling.models import BlackBody
