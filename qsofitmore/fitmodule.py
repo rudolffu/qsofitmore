@@ -1703,7 +1703,7 @@ class QSOFitNew:
                     par = par_list[i]
                     res_name_tmp = line+'_'+par
                     res_list = self.na_all_dict[line][par]
-                    if hasattr(res_list, 'size') and res_list.size > 0:
+                    if np.asarray(res_list).size > 0:
                         res_tmp = res_list[0]
                     else:
                         res_tmp = 0.0
