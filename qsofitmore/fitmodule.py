@@ -17,12 +17,16 @@ from astropy import units as u
 from astropy import constants as ac
 from .extinction import *
 from .auxmodule import *
-import pkg_resources
+try:
+    from importlib.resources import files
+except ImportError:
+    # Python < 3.9 fallback
+    from importlib_resources import files
 import pandas as pd
 from astropy.modeling.models import BlackBody
 
 # Update resource paths
-datapath = pkg_resources.resource_filename('qsofitmore', '/data/')
+datapath = str(files('qsofitmore') / 'data')
 
 __all__ = ['QSOFitNew']
 
@@ -270,8 +274,8 @@ class QSOFitNew:
         return self.flux
 
     def set_pl_pivot(self, pivot):
-        """
-        Set the pivot wavelength (Å) for f_{lambda} = (\lambda/\lambda_{\rm pivot})^{-alpha}
+        r"""
+        Set the pivot wavelength (Å) for f_{\lambda} = (\lambda/\lambda_{\rm pivot})^{-\alpha}
         """
         self.pl_pivot = float(pivot)
     
@@ -555,7 +559,7 @@ class QSOFitNew:
 
 
     def _L_conti(self, wave, pp):
-        """
+        r"""
         Calculate log10 \lambda L_{\lambda} at 1350, 3000, and 5100 A.
             L_{\lambda} is the monochromatic luminosity in erg/s/A, and
             \lambda L_{\lambda} is the a luminosity measure in erg/s.
@@ -650,23 +654,60 @@ class QSOFitNew:
         yval = np.zeros_like(xval)
         wave_Fe = fe_verner[:, 0]
         flux_Fe = fe_verner[:, 1]*8e-7
+        
+        # Restrict to template range
         ind = np.where((wave_Fe > 2000.) & (wave_Fe < 10000.), True, False)
         wave_Fe = wave_Fe[ind]
         flux_Fe = flux_Fe[ind]
+        
         Fe_FWHM = pp[1]
         xval_new = xval*(1.0+pp[2])
         ind = np.where((xval_new > 2000.) & (xval_new < 10000.), True, False)
+        
         if np.sum(ind) > 100:
-            if Fe_FWHM < 900.0:
-                sig_conv = np.sqrt(910.0**2-900.0**2)/2./np.sqrt(2.*np.log(2.))
+            # Calculate actual dispersion from the template
+            dwave = np.diff(wave_Fe)
+            median_dwave = np.median(dwave)
+            # Convert to velocity dispersion at middle wavelength
+            median_wave = np.median(wave_Fe)
+            template_dispersion = median_dwave / median_wave * 299792.458  # km/s
+            
+            # Verner template native resolution (typically ~900 km/s)
+            template_native_fwhm = 900.0  # km/s
+            
+            if Fe_FWHM < template_native_fwhm:
+                sig_conv = np.sqrt((template_native_fwhm + 10)**2 - template_native_fwhm**2) / (2. * np.sqrt(2.*np.log(2.)))
             else:
-                sig_conv = np.sqrt(Fe_FWHM**2-900.0**2)/2./np.sqrt(2.*np.log(2.))  # in km/s
-            # Get sigma in pixel space
-            sig_pix = sig_conv/106.3  # 106.3 km/s is the dispersion for the BG92 FeII template
-            khalfsz = np.round(4*sig_pix+1, 0)
-            xx = np.arange(0, khalfsz*2, 1)-khalfsz
-            kernel = np.exp(-xx**2/(2*sig_pix**2))
-            kernel = kernel/np.sum(kernel)
+                sig_conv = np.sqrt(Fe_FWHM**2 - template_native_fwhm**2) / (2. * np.sqrt(2.*np.log(2.)))
+            
+            # For very high resolution templates, rebin first for efficiency
+            if template_dispersion < 20:  # Very high resolution
+                rebin_factor = max(1, int(20 / template_dispersion))
+                if rebin_factor > 1:
+                    # Rebin the template
+                    n_new = len(wave_Fe) // rebin_factor
+                    wave_Fe_rebin = np.zeros(n_new)
+                    flux_Fe_rebin = np.zeros(n_new)
+                    for i in range(n_new):
+                        start_idx = i * rebin_factor
+                        end_idx = min((i + 1) * rebin_factor, len(wave_Fe))
+                        wave_Fe_rebin[i] = np.mean(wave_Fe[start_idx:end_idx])
+                        flux_Fe_rebin[i] = np.mean(flux_Fe[start_idx:end_idx])
+                    wave_Fe, flux_Fe = wave_Fe_rebin, flux_Fe_rebin
+                    effective_dispersion = 20.0  # Updated dispersion after rebinning
+                else:
+                    effective_dispersion = template_dispersion
+            else:
+                effective_dispersion = template_dispersion
+            
+            # Calculate convolution kernel with actual dispersion
+            sig_pix = sig_conv / effective_dispersion
+            khalfsz = int(np.round(4*sig_pix + 1))
+            xx = np.arange(0, khalfsz*2) - khalfsz
+            kernel = np.exp(-xx**2 / (2.*sig_pix**2))
+            kernel = kernel / np.sum(kernel)
+            
+            # Apply convolution
             flux_Fe_conv = np.convolve(flux_Fe, kernel, 'same')
             tck = interpolate.splrep(wave_Fe, flux_Fe_conv)
             yval[ind] = pp[0]*interpolate.splev(xval_new[ind], tck)
@@ -1665,7 +1706,7 @@ class QSOFitNew:
                     par = par_list[i]
                     res_name_tmp = line+'_'+par
                     res_list = self.na_all_dict[line][par]
-                    if res_list:
+                    if hasattr(res_list, 'size') and res_list.size > 0:
                         res_tmp = res_list[0]
                     else:
                         res_tmp = 0.0
