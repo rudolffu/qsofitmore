@@ -1131,12 +1131,12 @@ class QSOFitNew:
         if linefit == True:
             ax.text(0.5, -1.45, r'Rest-frame wavelength ($\rm \AA$)', fontsize=22, transform=ax.transAxes,
                     ha='center')
-            ax.text(-0.07, -0.1, r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22,
+            ax.text(-0.07, -0.1, r'$F_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22,
                     transform=ax.transAxes, rotation=90, ha='center', rotation_mode='anchor')
         else:
             plt.xlabel(r'Rest-frame wavelength ($\rm \AA$)', fontsize=22)
-            plt.ylabel(r'$f_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
-        
+            plt.ylabel(r'$F_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
+
         if self.save_fig == True:
             plt.savefig(save_fig_path+f'plot_fit_{self.name}.pdf', bbox_inches='tight')
             plt.savefig(save_fig_path+f'plot_fit_{self.name}.jpg', dpi=300, bbox_inches='tight')
