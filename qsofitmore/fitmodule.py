@@ -2039,21 +2039,6 @@ class QSOFitNew:
             self.qso = datacube[4, :]
             self.host_data = datacube[1, :]-self.qso
         return self.wave, self.flux, self.err
-    
-    def select_quasar_template(self, Mi, z):
-        """Select the appropriate quasar eigenspectrum based on absolute magnitude and redshift."""
-        if Mi is None:
-            return "qso_eigenspec_Yip2004_global.fits"
-        magnitude_bins = [-26, -24]
-        redshift_bins = [(0.08, 0.53), (0.53, 1.16), (1.16, 1.5), (1.5, 2.1), (2.1, 2.5), (2.5, float('inf'))]
-        labels = ["CZBIN1", "BZBIN2", "AZBIN4", "AZBIN5", "BZBIN5"]
-        
-        for i, mag_limit in enumerate(magnitude_bins):
-            if Mi <= mag_limit:
-                for j, (low_z, high_z) in enumerate(redshift_bins):
-                    if low_z <= z < high_z:
-                        return f"qso_eigenspec_Yip2004_{'D' if i == 0 else 'C0'}ZBIN{j+1}.fits"
-        return "qso_eigenspec_Yip2004_AZBIN5.fits"
 
     def _HostDecompose(self, wave, flux, err, z, Mi, npca_gal, npca_qso, path):
         path = datapath
