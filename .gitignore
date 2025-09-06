@@ -141,3 +141,6 @@ test_outputs/
 
 # Mac OS
 .DS_Store
+
+# Agent instruction stub is redirected to dev_guide.md and should not be tracked
+AGENTS.md

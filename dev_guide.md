@@ -1,75 +1,147 @@
 # dev_guide.md
 
-This file provides guidance for developing in this repository.
+This file acts as the instruction manual for contributors and coding agents (serves the role of AGENTS.md). Follow it for code style, testing, scope, and repo-specific conventions.
+
+## Agent Instructions (Read First)
+
+- Scope: This file is the instruction source for the entire repository. If a more deeply nested dev_guide.md exists, it takes precedence for files within its directory tree.
+- Change scope: Prefer minimal, surgical changes. Avoid broad refactors, renames, or file moves unless requested.
+- Code style: Follow PEP 8, format with `black`, lint with `flake8`. Keep changes consistent with surrounding code. Don’t add new heavy dependencies.
+- Tests: Add/update tests when changing behavior. Use `pytest` with existing markers. Keep tests fast by default; isolate benchmarks behind `-m benchmark`.
+- Data: Don’t add large binary assets. All data used by the library ships in `qsofitmore/data/`. External datasets (e.g., dust maps) must be fetched locally by the user or CI.
+- Docs: Update this guide and `README.md` when changing usage, flags, or workflows.
+- Backwards compatibility: Don’t break public API unless coordinated; deprecate with a clear path and tests.
 
 ## Overview
 
-`qsofitmore` is a Python package for fitting UV-optical QSO (quasar) spectra, 
-developed based on PyQSOFit with additional features for LAMOST quasar survey 
-and quasars behind the Galactic plane. It's a standalone astronomical 
-spectroscopy fitting package.
+`qsofitmore` is a Python package for fitting UV–optical QSO (quasar) spectra, developed from PyQSOFit and extended for LAMOST and Galactic-plane use cases. It is a standalone spectroscopy fitting toolkit with template data bundled under `qsofitmore/data/`.
 
-## Development Setup
+## Supported Python and Dependencies
 
-### Installation for Development
+- Python: 3.8–3.11
+- Core dependencies (see `pyproject.toml`): `numpy`, `scipy`, `matplotlib`, `astropy`, `pandas`, `dustmaps`, `kapteyn` (temporary), `lmfit>=1.3.0` (migration target)
+- Install Kapteyn (requires Cython < 3.0):
+  ```bash
+  pip install "cython<3.0"
+  pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
+  ```
+- Dust maps: fetch locally (no auto-download at import). Example for SFD98:
+  ```python
+  from dustmaps.config import config
+  config['data_dir'] = './dustmaps_data'
+  import dustmaps.sfd
+  dustmaps.sfd.fetch()
+  ```
+
+## Installation
+
 ```bash
-# Install in editable mode
+# Standard install
+python -m pip install .
+
+# Development install
 python -m pip install -e .
 
-# Or use the standard installation
-python -m pip install .
+# Optional dev tools
+python -m pip install -e .[dev]
 ```
 
-### Dependencies
+## Developer Workflows
 
-Core dependencies are automatically handled, but some require special 
-installation:
+- Quick tests (quiet, no benchmarks): `pytest -q`
+- Focus tests by marker: `pytest -m lmfit -q`, `pytest -m "not benchmark"`
+- Migration flags locally:
+  - `export QSOFITMORE_USE_LMFIT=true` to enable lmfit globally
+  - `export QSOFITMORE_USE_LMFIT_CONTINUUM=true` for continuum only
+  - `export QSOFITMORE_USE_LMFIT_LINES=true` for lines only
+  - `export QSOFITMORE_USE_LMFIT_MC=true` for MC only
+- Tox common runs:
+  - `tox -e py311-lmfit` to validate lmfit infra
+  - `tox -e py311-kmpfit` to validate legacy path
+  - `tox -e benchmark` to run performance checks (marker-gated)
+  - `tox -e lint` for formatting/lint/mypy checks
 
-- `kapteyn` (requires cython): 
-  `pip install cython && pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz`
-- Dust maps setup: Download SFD98 dust map via `dustmaps.sfd.fetch()` after 
-  configuring data directory
+## Running Tests
 
-### Development Dependencies (Optional)
+This repository uses `pytest` with markers configured in `pytest.ini`.
 
+- Quick run:
+  ```bash
+  pytest -q
+  ```
+- Exclude benchmarks (default via addopts):
+  ```bash
+  pytest -m "not benchmark"
+  ```
+- Useful markers: `benchmark`, `slow`, `integration`, `kmpfit`, `lmfit`, `migration`.
+
+### Tox Environments
+
+`tox.ini` defines matrix envs for Python 3.8–3.11 and for migration modes:
+
+- Envs: `py{38,39,310,311}-{kmpfit,lmfit,migration}`
+- Feature flags are set via environment variables (see next section).
+- Tox pre-steps fetch Kapteyn and SFD dust maps into `./dustmaps_data`.
+
+Run examples:
 ```bash
-pip install pytest black flake8
+tox -e py311-lmfit
+tox -e py310-migration
+tox -e coverage
+tox -e lint
 ```
+
+### Feature Flags (Environment Variables)
+
+Configured in `qsofitmore/config.py` and used in tests/CI. Defaults shown in parentheses.
+
+- `QSOFITMORE_USE_LMFIT` (false): Enable lmfit globally.
+- `QSOFITMORE_USE_LMFIT_CONTINUUM` (false): Enable lmfit for continuum only.
+- `QSOFITMORE_USE_LMFIT_LINES` (false): Enable lmfit for line fitting only.
+- `QSOFITMORE_USE_LMFIT_MC` (false): Enable lmfit-based Monte Carlo.
+- `QSOFITMORE_VALIDATE_KMPFIT` (true): Validate against kmpfit results.
+- `QSOFITMORE_BENCHMARK` (false): Enable performance benchmarks.
+- Tolerances: `QSOFITMORE_RTOL` (1e-6), `QSOFITMORE_ATOL` (1e-8).
+
+Examples:
+```bash
+export QSOFITMORE_USE_LMFIT=true
+export QSOFITMORE_VALIDATE_KMPFIT=false
+pytest -m "not benchmark" -q
+```
+
+## CI Notes
+
+The workflow `.github/workflows/migration-tests.yml` runs:
+- Infrastructure tests to validate config and flags.
+- lmfit-only tests (no Kapteyn) and optional benchmarks.
+- Integration checks for migration flags.
+
+If you change feature flags, markers, or test paths, update this workflow and this guide accordingly.
 
 ## Code Architecture
 
-### Main Classes
+### Main Class
 
-- **QSOFitNew** (`qsofitmore/fitmodule.py`): Primary fitting class that handles 
-  QSO spectrum analysis
-  - Initialization: Takes wavelength, flux, error arrays plus redshift and 
-    coordinates
-  - Key methods: `Fit()`, `setmapname()`, `set_pl_pivot()`, `fromiraf()`
-  - Supports SDSS and custom spectra formats
+- `QSOFitNew` (`qsofitmore/fitmodule.py`): primary fitting class for QSO spectra.
+  - Init: arrays `lam`, `flux`, `err`, `z`; optional RA/DEC/name; SDSS helpers.
+  - Methods: `Fit()`, `setmapname()`, `set_pl_pivot()`, `fromiraf()`, `fromsdss()`.
+  - Note: `fitmodule.py` is large and performance-critical; keep changes localized.
 
 ### Core Modules
 
-- **fitmodule.py**: Main fitting engine with QSOFitNew class (~4000+ lines)
-- **auxmodule.py**: Auxiliary functions and utilities  
-- **extinction.py**: Dust extinction calculations
-- **config.py**: Configuration management
+- `fitmodule.py`: main engine (currently uses Kapteyn `kmpfit`).
+- `auxmodule.py`: helpers and plotting style (`sciplotstyle()`).
+- `extinction.py`: extinction/dust laws.
+- `config.py`: `migration_config` with feature flags and tolerances.
 
-### Data Structure
+### Data Layout
 
-- **qsofitmore/data/**: Template data files
-  - `bc03/`: Bruzual & Charlot stellar population models
-  - `pca/`: PCA templates from Yip et al. 2004
-  - `iron_templates/`: FeII templates (Verner, Garcia-Rissmann)
-  - `balmer/`: Balmer series templates (Storey & Hummer 1995)
-
-### Key Features
-
-- Fit high-order Balmer emission lines (n=6 to n=50)
-- Multiple FeII templates: BG92-VW01 (default), V09, G12
-- Optional broken power-law continuum model
-- Support for different dust maps: SFD98, Planck 2014/2016
-- Monte Carlo error estimation
-- Host galaxy decomposition using PCA templates
+- `qsofitmore/data/`
+  - `bc03/`: Bruzual & Charlot SSP models
+  - `pca/`: Yip et al. 2004 PCA templates
+  - `iron_templates/`: FeII templates (BG92–VW01, Verner 2009, Garcia‑Rissmann 2012)
+  - `balmer/`: Storey & Hummer (1995) Balmer series templates
 
 ## Usage Patterns
 
@@ -78,41 +150,53 @@ pip install pytest black flake8
 ```python
 from qsofitmore import QSOFitNew
 
-# Initialize from custom data
-q = QSOFitNew(lam=wavelength, flux=flux*1e17, err=error*1e17, 
-              z=redshift, ra=ra, dec=dec, name='object_name', 
+# Initialize from custom data (flux/err in 1e-17 units expected)
+q = QSOFitNew(lam=wavelength, flux=flux*1e17, err=error*1e17,
+              z=redshift, ra=ra, dec=dec, name='object_name',
               is_sdss=False, path=output_path)
 
 # Or from IRAF multispec
-q = QSOFitNew.fromiraf("spectrum.fits", redshift=z, 
-                      telescope='LJT', path=output_path)
+q = QSOFitNew.fromiraf("spectrum.fits", redshift=z, telescope='LJT', path=output_path)
 
 # Configure dust map
 q.setmapname("planck")  # or "sfd", "planck14"
 
 # Perform fit
-q.Fit(name='fit_name', 
+q.Fit(name='fit_name',
       deredden=True,
       include_iron=True,
       iron_temp_name="V09",  # "BG92-VW01", "V09", "G12"
       broken_pl=True,
-      BC=True,  # Balmer continuum
-      MC=True,  # Monte Carlo errors
+      BC=True,   # Balmer continuum + high-order Balmer lines
+      MC=True,   # Monte Carlo errors
       save_result=True,
       plot_fig=True)
 ```
 
-### Testing
+## Style, Lint, and Type Hints
 
-No specific test framework is configured in this repository. The examples in 
-`qsofitmore/examples/` serve as functional tests and tutorials.
+- Format: `black qsofitmore tests`
+- Lint: `flake8 qsofitmore tests`
+- Optional static checks: `tox -e lint` (includes `mypy` if configured).
+- Docstrings: NumPy or Google style are acceptable; keep concise and actionable.
 
-## Important Notes
+## Contribution Guidelines
 
-- Flux units: Code expects flux in 10^-17 erg/s/cm^2/Å, multiply input by 
-  1e17 if needed
-- The package includes extensive spectral templates and requires ~100MB of 
-  data files
-- Output includes both FITS tables and plots (JPG/PDF) with fitting results
-- Monte Carlo error estimation can be computationally intensive
-- Supports both rest-frame and observed-frame input spectra
+- Keep public API stable; document and test any behavior changes.
+- Add tests for new features or bug fixes; use markers to control runtime.
+- Prefer small, focused PRs; keep diffs minimal, avoid unrelated changes.
+- Update `CHANGES.txt` and bump version in `pyproject.toml` when preparing a release.
+
+## Important Notes and Pitfalls
+
+- Flux units: expected in 1e-17 erg/s/cm^2/Å. Multiply raw erg/s/cm^2/Å by 1e17.
+- External data: dust maps are not bundled; fetch locally and configure `dustmaps` data dir.
+- Performance: Monte Carlo estimation can be expensive; keep defaults conservative in tests.
+- Examples: notebooks in `qsofitmore/examples/` demonstrate end-to-end usage; outputs are included for reference.
+
+## Release Checklist
+
+- Update `pyproject.toml` version and `CHANGES.txt`.
+- Verify `README.md` stays accurate (dependencies, examples, flags).
+- Ensure tests pass locally and in CI across environments.
+- Tag release and draft GitHub release notes.

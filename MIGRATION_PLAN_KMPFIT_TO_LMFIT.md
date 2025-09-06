@@ -6,6 +6,15 @@ This document outlines a comprehensive plan to migrate the qsofitmore codebase f
 
 The qsofitmore package currently relies on `kapteyn.kmpfit` for non-linear least squares fitting. This migration plan addresses the replacement with `lmfit`, a modern Python fitting library that offers better maintainability, performance, and ecosystem integration.
 
+## Current Status (Repository)
+
+- Dependencies: `lmfit>=1.3.0` is already declared in `pyproject.toml`; `kapteyn` remains for now and will be removed at the end of migration.
+- Feature flags: Implemented in `qsofitmore/config.py` (`migration_config`) with environment variables to progressively enable lmfit by component and control validation/benchmarks.
+- Tests: `pytest` suite exists under `tests/` with markers (`kmpfit`, `lmfit`, `migration`, `benchmark`, etc.). Integration and utility tests scaffold comparisons and benchmarks.
+- CI: `.github/workflows/migration-tests.yml` runs infrastructure checks, lmfit-only tests, optional benchmarks, and integration flag checks across Python 3.9–3.11.
+
+Action: Implement lmfit code paths gated by `migration_config` flags, validate in CI, then retire `kapteyn`.
+
 ## Migration Analysis Summary
 
 ### Current kapteyn.kmpfit Usage Patterns
@@ -37,20 +46,23 @@ The qsofitmore package currently relies on `kapteyn.kmpfit` for non-linear least
 
 ## Phase 1: Dependencies and Infrastructure
 
-### 1.1 Update Dependencies
+### 1.1 Dependencies
+Already added: `lmfit>=1.3.0` in `pyproject.toml`. Keep `kapteyn` until parity is validated, then remove it (and Cython pin in README).
+
+### 1.2 Imports and Flags
 ```python
-# Replace in requirements.txt and pyproject.toml
-- kapteyn  # Remove
-+ lmfit>=1.3.0  # Add
+# In fitmodule.py (during migration):
+from kapteyn import kmpfit                    # legacy path (kept)
+from lmfit import minimize, Parameters        # new path
+from .config import migration_config          # feature flags
 ```
 
-### 1.2 Update Imports
+Guard usage with flags:
 ```python
-# In fitmodule.py, replace:
-from kapteyn import kmpfit
-# With:
-import lmfit
-from lmfit import minimize, Parameters
+if migration_config.use_lmfit_continuum:
+    # call lmfit-based continuum
+else:
+    # call kmpfit-based continuum
 ```
 
 ## Phase 2: Core Function Migrations
@@ -65,7 +77,7 @@ conti_fit.parinfo = tmp_parinfo
 conti_fit.fit(params0=pp0)
 ```
 
-**New lmfit equivalent:**
+**New lmfit equivalent (sketch):**
 ```python
 def _fit_continuum_lmfit(self, wave, flux, err, pp0, param_bounds):
     """Replacement for continuum kmpfit fitting"""
@@ -93,6 +105,7 @@ def _fit_continuum_lmfit(self, wave, flux, err, pp0, param_bounds):
         return (flux - self._f_conti_all(wave, param_vals)) / err
     
     # Perform fit
+    # Prefer Levenberg–Marquardt for parity with kmpfit
     result = minimize(residual_func, params, args=(wave, flux, err), method='leastsq')
     
     # Store results in compatible format
@@ -115,7 +128,7 @@ line_fit.parinfo = line_fit_par
 line_fit.fit(params0=line_fit_ini)
 ```
 
-**New lmfit equivalent:**
+**New lmfit equivalent (sketch):**
 ```python
 def _do_line_lmfit(self, linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit):
     """Replacement for line kmpfit fitting"""
@@ -216,6 +229,30 @@ def _monte_carlo_errors_lmfit(self, x, y, err, params_best, n_trails):
     return param_std, param_samples
 ```
 
+Note: For continuum fitting under lmfit, we can skip Monte Carlo to save time and use lmfit’s parameter uncertainties directly (`param.stderr`). The implementation in `fitmodule.py` uses these when `QSOFITMORE_USE_LMFIT_CONTINUUM=true`, populating parameter errors and setting luminosity errors to zero (as a placeholder until analytic propagation is added).
+
+### 2.4 Parameter Tying and Constraints (Details)
+
+The line list uses group indices for constraints:
+- `vindex`: velocity (center) tying group; same group => same logged center (`log(lambda)`) or fixed offset.
+- `windex`: width tying group; same group => same `sigma`.
+- `findex`: flux ratio group; `fvalue` gives ratio relative to group anchor.
+
+Implementation in lmfit:
+- Velocity tie: set expressions so members share a base parameter. Example: `params['Ha_na_wave'].expr = 'Ha_br_wave'`.
+- Width tie: `params['OIII4959_sig'].expr = 'OIII5007_sig'`.
+- Flux ratios: `params['NII6585_amp'].expr = '3.0 * NII6549_amp'` or using the provided `fvalue` with an agreed anchor.
+
+Choose one anchor per group deterministically (first encounter) and set other parameters’ `.expr` to tie to it. For allowable small offsets (e.g., Doppler), include additive terms or pre-transform inputs appropriately.
+
+Note: the code currently uses `np.log(wave)` in line residuals. Keep parity: define tie expressions in terms of log-wavelength parameters.
+
+### 2.5 Residuals and Weighting
+
+- Weighting: keep `(model - data) / err` residuals exactly as in kmpfit.
+- Method: default to `method='leastsq'` for closest behavior; `least_squares` is an alternative when strict bounds enforcement is required.
+- Scaling: if convergence differs, consider normalizing parameter scales in initial guesses.
+
 ## Phase 3: Interface Compatibility
 
 ### 3.1 Maintain Backward Compatibility
@@ -259,79 +296,73 @@ class LmfitFitterWrapper:
         self.result = result
 ```
 
+Alternatively (preferred in this repo): keep separate kmpfit/lmfit code paths for continuum, lines, and MC, and switch between them via `migration_config` flags. This keeps the public API unchanged and avoids a heavy wrapper abstraction.
+
 ## Phase 4: Testing and Validation
 
 ### 4.1 Regression Tests
-```python
-def test_continuum_fitting_compatibility():
-    """Test that lmfit produces same results as kmpfit for continuum fitting"""
-    
-    # Load reference spectrum
-    wave, flux, err = load_test_spectrum()
-    
-    # Fit with both methods
-    result_kmpfit = fit_continuum_kmpfit(wave, flux, err)  # Original
-    result_lmfit = fit_continuum_lmfit(wave, flux, err)    # New
-    
-    # Compare parameters (within tolerance)
-    np.testing.assert_allclose(result_kmpfit.params, result_lmfit.params, 
-                              rtol=1e-6, atol=1e-8)
+The repository already includes scaffolding for migration tests:
+- `tests/test_migration_integration.py`: feature flags and workflow scaffolding.
+- `tests/test_continuum_fitting.py`: continuum structure and validation hooks.
+- `tests/test_line_fitting.py`: line fitting structure and validation hooks.
+- `tests/test_utilities.py`: spectrum generation and comparison helpers.
 
-def test_line_fitting_compatibility():
-    """Test line fitting equivalence"""
-    # Similar structure for line fitting tests
-    pass
-
-def test_monte_carlo_errors():
-    """Test MC error estimation produces consistent uncertainties"""
-    pass
-```
+Actions to implement once lmfit paths are added:
+- Add paired tests that run both kmpfit and lmfit paths on the same synthetic data, asserting parameter agreement within `migration_config.rtol/atol`.
+- Use markers `kmpfit` and `lmfit` (or environment flags) to select paths.
+- Add benchmarks guarded by `-m benchmark` to compare runtime.
 
 ### 4.2 Performance Benchmarking
-```python
-def benchmark_fitting_performance():
-    """Compare performance between kmpfit and lmfit"""
-    
-    import time
-    
-    # Test data
-    wave, flux, err = generate_test_spectrum()
-    
-    # Benchmark kmpfit
-    start_time = time.time()
-    for i in range(100):
-        result_kmpfit = fit_spectrum_kmpfit(wave, flux, err)
-    kmpfit_time = time.time() - start_time
-    
-    # Benchmark lmfit  
-    start_time = time.time()
-    for i in range(100):
-        result_lmfit = fit_spectrum_lmfit(wave, flux, err)
-    lmfit_time = time.time() - start_time
-    
-    print(f"kmpfit: {kmpfit_time:.3f}s, lmfit: {lmfit_time:.3f}s")
-```
+Prefer using `pytest-benchmark` (already configured) for comparable measurements; do not add ad-hoc timers.
 
 ## Phase 5: Implementation Steps
 
 ### 5.1 Preparation
-- [ ] Add lmfit to dependencies in `pyproject.toml` and `requirements.txt`
-- [ ] Create feature flag for gradual migration
-- [ ] Add comprehensive test suite covering current functionality
-- [ ] Set up CI/CD pipeline to run both kmpfit and lmfit tests
+- [x] Add lmfit to dependencies in `pyproject.toml`
+- [x] Create feature flags in `qsofitmore/config.py`
+- [x] Add test suite scaffolding and markers
+- [x] Set up CI workflow (`migration-tests.yml`)
 
 ### 5.2 Incremental Migration
-- [ ] Start with continuum fitting (most isolated) - `fitmodule.py:335-350`
-- [ ] Migrate line fitting functions - `fitmodule.py:2234-2258`
-- [ ] Update Monte Carlo error estimation - Multiple locations
-- [ ] Migrate remaining usage patterns
-- [ ] Update all residual functions to lmfit format
+- [ ] Implement lmfit continuum path guarded by `use_lmfit_continuum` (see `fitmodule.py:339` et al.)
+- [ ] Implement lmfit line fitting path guarded by `use_lmfit_lines` with parameter ties
+- [ ] Implement lmfit MC errors guarded by `use_lmfit_mc`
+- [ ] Keep kmpfit behavior as default until parity is met
+- [ ] Add residual wrappers for shared logic; keep log-wavelength handling identical
 
 ### 5.3 Validation & Cleanup
-- [ ] Run full regression test suite
-- [ ] Performance benchmarking against kmpfit baseline
-- [ ] Remove kapteyn dependency from all configuration files
-- [ ] Update documentation and examples
+- [ ] Enable `QSOFITMORE_VALIDATE_KMPFIT=true` and compare parameters within tolerances
+- [ ] Performance benchmarking with `pytest -m benchmark`
+- [ ] Remove `kapteyn` dependency and Kapteyn-specific code paths
+- [ ] Update `README.md` and `dev_guide.md` to remove legacy instructions
+
+## Recent Changes (in this migration)
+
+- Added lmfit paths for continuum and line fitting, gated by feature flags.
+- Always include error columns in outputs; when using lmfit and `MC=False`, use lmfit stderr-based errors for parameters and analytic errors for broad line metrics.
+- Tightened bounds for Fe and Balmer continuum/high-order norms (≤ 1e3) for stability; left PL norm wide.
+- Fixed broken power-law model to be continuous at 4661 Å and aligned with input wavelengths.
+- Global flag `use_lmfit` now cascades at runtime to enable both components.
+
+## Open To‑Dos
+
+1. Narrow-line uncertainty propagation (lmfit, MC=False)
+   - Propagate uncertainties for narrow-line metrics (fwhm/sigma/ew/peak/area) using local covariance of each 3‑parameter group.
+2. Optional: lmfit MC for lines
+   - Mirror the implemented continuum MC for lines when `use_lmfit_mc=True` for full parity.
+3. Optional: Analytic λLλ uncertainties for continuum when MC=False
+   - Re‑enable Jacobian+covariance propagation for λLλ if desired (currently skipped for speed).
+4. Configurable bounds
+   - Make Fe/BC norm upper limits configurable (env vars or Fit args) to ease tuning across datasets.
+5. Tests
+   - Add focused tests to assert: (a) flag gating, (b) presence of error columns with lmfit/MC=False, (c) realistic BC/Fe behavior under bounds, (d) parity windows for log‑wavelength usage.
+6. Docs
+   - Reflect current default bounds and error reporting behavior in `dev_guide.md` and `README.md`.
+
+## Commit Guidance
+
+- Keep changes focused on migration; avoid over‑eager refactors.
+- Preserve output schema stability (value + `_err` pairs) for downstream consumers.
 
 ## Key Benefits of Migration
 
@@ -362,6 +393,10 @@ def benchmark_fitting_performance():
 - Side-by-side comparison during transition period
 - Rollback capability if issues arise
 
+Additional mitigations:
+- Use deterministic random seeds in MC tests to stabilize comparisons.
+- Compare derived quantities (e.g., FWHM, EWs, fluxes) in addition to raw parameters.
+
 ## Success Criteria
 
 1. **Functionality**: All existing fitting operations produce equivalent results
@@ -382,9 +417,9 @@ def benchmark_fitting_performance():
 ## Files Requiring Changes
 
 1. **Primary**: `qsofitmore/fitmodule.py` - All kmpfit usage
-2. **Dependencies**: `pyproject.toml`, `requirements.txt`, `setup.py`
+2. **Dependencies**: `pyproject.toml` (remove Kapteyn when done)
 3. **Documentation**: `README.md`, `dev_guide.md`
-4. **Tests**: New test files for regression testing
+4. **Tests**: Implement assertions in existing scaffolds for regression testing
 5. **Examples**: Update notebooks in `examples/` directory
 
 ## Contact and Support
