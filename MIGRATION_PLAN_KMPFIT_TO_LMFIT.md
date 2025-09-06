@@ -332,7 +332,6 @@ def benchmark_fitting_performance():
 - [ ] Performance benchmarking against kmpfit baseline
 - [ ] Remove kapteyn dependency from all configuration files
 - [ ] Update documentation and examples
-- [ ] Update CLAUDE.md with new dependency information
 
 ## Key Benefits of Migration
 
@@ -384,7 +383,7 @@ def benchmark_fitting_performance():
 
 1. **Primary**: `qsofitmore/fitmodule.py` - All kmpfit usage
 2. **Dependencies**: `pyproject.toml`, `requirements.txt`, `setup.py`
-3. **Documentation**: `README.md`, `CLAUDE.md`
+3. **Documentation**: `README.md`, `dev_guide.md`
 4. **Tests**: New test files for regression testing
 5. **Examples**: Update notebooks in `examples/` directory
 
