@@ -11,16 +11,23 @@ from uncertainties import ufloat, umath
 
 
 def broken_pl_model(wave, a1, a2, b):
-    w_blue = wave[wave<4661]
-    w_red = wave[wave>=4661]
-    if len(w_blue)>0 and len(w_red)>0:
-        w_break = wave[wave<4661][-1]
-        f_blue = b*(w_blue/3.0e3)**a1
-        f_red = f_blue[-1]*(w_red/w_break)**a2
-        f_all = np.concatenate((f_blue,f_red), axis=None)
-    elif len(w_blue)>0 and len(w_red)==0:
-        f_all = b*(wave/3.0e3)**a1
-    return f_all
+    """
+    Broken power-law continuum with continuity at 4661 Å and pivot at 3000 Å.
+    a1: blue-side slope; a2: red-side slope; b: normalization at 3000 Å (blue).
+    Returns an array aligned to the input wavelength order.
+    """
+    wave = np.asarray(wave, dtype=float)
+    f = np.zeros_like(wave, dtype=float)
+    mask_blue = wave < 4661.0
+    mask_red = ~mask_blue
+    # Blue side: simple PL anchored at 3000 Å
+    if np.any(mask_blue):
+        f[mask_blue] = b * (wave[mask_blue] / 3000.0) ** a1
+    # Red side: ensure continuity at 4661 Å
+    if np.any(mask_red):
+        f_break = b * (4661.0 / 3000.0) ** a1
+        f[mask_red] = f_break * (wave[mask_red] / 4661.0) ** a2
+    return f
 
 # Return LaTeX name for a line / complex name
 def texlinename(name) -> str:

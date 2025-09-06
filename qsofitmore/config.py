@@ -21,7 +21,7 @@ class MigrationConfig:
     
     def __init__(self):
         # Feature flags for migration
-        self.use_lmfit = os.environ.get('QSOFITMORE_USE_LMFIT', 'false').lower() == 'true'
+        self._use_lmfit = os.environ.get('QSOFITMORE_USE_LMFIT', 'false').lower() == 'true'
         self.use_lmfit_continuum = os.environ.get('QSOFITMORE_USE_LMFIT_CONTINUUM', 'false').lower() == 'true'
         self.use_lmfit_lines = os.environ.get('QSOFITMORE_USE_LMFIT_LINES', 'false').lower() == 'true'
         self.use_lmfit_mc = os.environ.get('QSOFITMORE_USE_LMFIT_MC', 'false').lower() == 'true'
@@ -33,6 +33,25 @@ class MigrationConfig:
         # Tolerance settings for validation
         self.rtol = float(os.environ.get('QSOFITMORE_RTOL', '1e-6'))
         self.atol = float(os.environ.get('QSOFITMORE_ATOL', '1e-8'))
+        # Global override on init: enabling global lmfit turns on per-component flags by default
+        if self._use_lmfit:
+            self.use_lmfit_continuum = True if os.environ.get('QSOFITMORE_USE_LMFIT_CONTINUUM') is None else self.use_lmfit_continuum
+            self.use_lmfit_lines = True if os.environ.get('QSOFITMORE_USE_LMFIT_LINES') is None else self.use_lmfit_lines
+
+    @property
+    def use_lmfit(self):
+        return self._use_lmfit
+
+    @use_lmfit.setter
+    def use_lmfit(self, value: bool):
+        """Setting global lmfit also cascades to per-component flags at runtime."""
+        self._use_lmfit = bool(value)
+        if self._use_lmfit:
+            self.use_lmfit_continuum = True
+            self.use_lmfit_lines = True
+        else:
+            self.use_lmfit_continuum = False
+            self.use_lmfit_lines = False
     
     def enable_lmfit_gradually(self):
         """Enable lmfit components in order of risk (lowest first)"""
