@@ -948,8 +948,14 @@ class QSOFitNew:
 
         samples = []
         Lsamples = []
+        # Prepare Fe flux/ew collection if requested
+        collect_fe = self.Fe_flux_range is not None and hasattr(self, 'Fe_range_list') and hasattr(self, 'Fe_wave_keys')
+        if collect_fe:
+            n_Fe_flux = np.array(self.Fe_flux_range).flatten().shape[0] // 2
+            all_Fe_flux = np.zeros((n_Fe_flux, int(max(1, n_trails))))
+            all_Fe_ew = np.zeros_like(all_Fe_flux)
         base_init = np.array(pp0, dtype=float)
-        for _ in range(int(max(1, n_trails))):
+        for ti in range(int(max(1, n_trails))):
             flux_noisy = y + np.random.randn(len(y)) * err
             params = make_params(base_init)
             try:
@@ -958,6 +964,11 @@ class QSOFitNew:
                     pbest = np.array([res.params[f"p{i}"].value for i in range(n_params)], dtype=float)
                     samples.append(pbest)
                     Lsamples.append(self._L_conti(x, pbest))
+                    if collect_fe:
+                        for i, wrange in enumerate(self.Fe_range_list):
+                            flux_tmp, ew_tmp = self.Fe_line_prop(pbest, wrange)
+                            all_Fe_flux[i, ti] = flux_tmp
+                            all_Fe_ew[i, ti] = ew_tmp
             except Exception:
                 continue
 
@@ -965,6 +976,15 @@ class QSOFitNew:
             return np.zeros(n_params, dtype=float), np.zeros(3, dtype=float)
         samples = np.array(samples)
         Lsamples = np.array(Lsamples)
+        if collect_fe:
+            # Store per-range distributions for later error calculation
+            try:
+                df_fe_flux = pd.DataFrame(all_Fe_flux.T, columns=self.Fe_wave_keys)
+                df_fe_ew = pd.DataFrame(all_Fe_ew.T, columns=self.Fe_wave_keys)
+                self.df_fe_flux = df_fe_flux
+                self.df_fe_ew = df_fe_ew
+            except Exception:
+                pass
         return samples.std(axis=0), Lsamples.std(axis=0)
 
     def _do_line_lmfit(self, linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit):
