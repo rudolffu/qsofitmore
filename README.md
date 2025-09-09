@@ -16,22 +16,20 @@ A python package for fitting UV-optical QSO spectra. This package is developed b
 Dependencies:
 ```
 astropy
-kapteyn (depends on cython)
+lmfit
 dustmaps
 uncertainties
 ```
 
 Assuming you have anaconda installed (`astropy` included), the following steps demonstrate how to install dependencies above.
-
-Install [`kapteyn`](https://www.astro.rug.nl/software/kapteyn/):  
+- Install these packages via conda:
 ```
-pip install "cython<3.0"
-pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
+conda install -c conda-forge lmfit dustmaps uncertainties
 ```
 
-Install `dustmaps`, `uncertainties`:
+You can also install these packages via pip:
 ```
-pip install dustmaps uncertainties
+pip install lmfit dustmaps uncertainties
 ```
 
 Download the SFD98 dust map:
@@ -47,6 +45,14 @@ Check https://dustmaps.readthedocs.io/en/latest/installation.html for more dust 
 
 After installing the dependencies, download and set up the `qsofitmore` package.
 
+One-line installation with pip:
+
+```
+pip install git+https://github.com/rudolffu/qsofitmore.git
+```
+
+Alternatively, clone the repository and install manually:
+
 ```
 git clone https://github.com/rudolffu/qsofitmore.git 
 cd qsofitmore 
@@ -61,7 +67,7 @@ By default, qsofitmore uses the lmfit-based fitting paths. The legacy kmpfit pat
 
 - Install Kapteyn (optional):
   ```bash
-  pip install "cython<3.0"
+  pip install "cython<3.0" # suggested by Kapteyn maintainer
   pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
   # or via optional extra
   pip install .[legacy]
