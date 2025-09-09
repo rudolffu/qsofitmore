@@ -1,10 +1,35 @@
+### Since v1.2.2 (Unreleased):
+- Migration toward `lmfit`:
+  - `lmfit` is now a core dependency; Kapteyn `kmpfit` is optional via the `legacy` extra.
+  - New runtime feature flags in `qsofitmore.config.migration_config` to enable `lmfit` pathways gradually and/or validate against `kmpfit` (via env vars and tox envs).
+  - Implemented `lmfit`-based continuum and experimental line-fitting paths behind flags; more robust broken PL; simplified bounds; always include error columns even when `MC=False`; fixed Fe II MC collection for `cal_Fe_line_res`.
+- MBH utilities: added instrumental FWHM correction and support for runs without uncertainty inputs.
+- Plotting and QA: minor y-axis label tweaks and small plotting improvements.
+- CI/dev: modernized tox matrix, optional Kapteyn install for legacy envs, and various maintenance fixes.
+
+### Updates from v1.2.1 to v1.2.2:
+- Added the Garcia-Rissmann et al. (2012) Fe II template within [8100, 11500] Å (NIR).
+- Added `set_pl_pivot()` to configure the power-law continuum pivot wavelength.
+- Expanded NIR continuum windows; unified iron template handling (`include_iron`); refined Verner (2009) template upper wavelength to 1 micron; improved V09 FWHM handling.
+- API cleanups and utilities: renamed `Flux2L` to `flux_to_luminosity`; minor result/table name updates; updated tutorial and examples.
+- Documentation and metadata: updated citation (Zenodo DOI), README, and packaging metadata.
+
+### Updates from v1.2.0 to v1.2.1:
+- Added the Verner et al. (2009) Fe II template (UV–optical; up to 1 micron) for iron emission fitting.
+- Added Storey & Hummer (1995) Balmer emission line series templates (n_upper=6–50) for N_e=1e9 and 1e10; integrated with the Balmer continuum.
+- Added convenience initializer `QSOFitNew.fromsdss()`; improved `fromiraf()`; new `in_rest_frame` argument for `QSOFitNew`.
+- Switched Galactic extinction to use `dustmaps` by default; added Planck maps (`planck16`/`planck` and `planck14`) in addition to SFD98; default map set to Planck GNILC (2016).
+- Added Fe II flux and EW measurements in a user-defined range via `Fe_flux_range`, saved to outputs; adjusted default Fe II flux window to [4434, 4684] Å.
+- Removed the external `PyQSOFit` submodule by merging core functionality into `fitmodule.py`; `qsofitmore` is now a standalone package with the same GNU license as `PyQSOFit`.
+- Packaging and maintenance: included package data, added `pyproject.toml`, addressed deprecations/warnings, and updated examples/docs.
+
+### Updates from v1.1.0 to v1.2.0:
+- `PyQSOFit` is now included as a submodule. 
+- The installation process is simplified by adding the dependencies `sfdmap`, `PyAstronomy`, and `uncertainties` to `setup.py`, and by adding `PyQSOFit` to `requirements.txt`. 
+
 ### Updates from v1.0.0 to v1.1.0:
 - Added an optional broken power-law model in the continuum fitting process.  
 - Enabled line property outputs for all narrow lines, OIII core+wing as a whole, and CIV br+na as a whole.  
 - Used new criterion to verify narrow/broad components in self._PlotFig() to prevent narrow components from being plotted as red (broad) lines.  
 - Changed prefix of comp_result from number to the complex name.  
 - Bug fixes.
-
-### Updates from v1.1.0 to v1.2.0:
-- `PyQSOFit` is now included as a submodule. 
-- The installation process is simplified by adding the dependencies `sfdmap`, `PyAstronomy`, and `uncertainties` to `setup.py`, and by adding `PyQSOFit` to `requirements.txt`.
