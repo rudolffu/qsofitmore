@@ -147,21 +147,27 @@ jobs:
     - name: Run lmfit benchmarks
       run: |
         export QSOFITMORE_USE_LMFIT=true
+        export QSOFITMORE_VALIDATE_KMPFIT=false
         export QSOFITMORE_BENCHMARK=true
-        pytest tests/test_utilities.py -m benchmark --benchmark-json=lmfit_benchmark.json
+        # Run all benchmark-marked tests and only collect benchmarks
+        pytest tests/ -m benchmark --benchmark-only --benchmark-json=lmfit_benchmark.json
     
     - name: Display benchmark results
       run: |
-        python -c "
-        import json
-        with open('lmfit_benchmark.json') as f:
-            data = json.load(f)
-        print('Benchmark results:')
-        for test in data.get('benchmarks', []):
-            name = test['name']
-            time = test['stats']['mean']
-            print(f'{name}: {time:.4f}s')
-        "
+        if [ -f lmfit_benchmark.json ]; then
+          python -c "
+          import json
+          with open('lmfit_benchmark.json') as f:
+              data = json.load(f)
+          print('Benchmark results:')
+          for test in data.get('benchmarks', []):
+              name = test['name']
+              time = test['stats']['mean']
+              print(f'{name}: {time:.4f}s')
+          "
+        else
+          echo "No benchmark JSON produced (no benchmarks collected)."
+        fi
 
   integration-tests:
     name: Integration tests
