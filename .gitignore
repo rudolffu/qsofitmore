@@ -128,8 +128,19 @@ dmypy.json
 # Pyre type checker
 .pyre/
 
-$ vscode settings
+# Migration testing artifacts
+dustmaps_data/
+*_benchmark.json
+test_outputs/
+
+# Claude Code
+.claude/
+
+# vscode settings
 .vscode*
 
-$ Mac OS
+# Mac OS
 .DS_Store
+
+# Agent instruction stub is redirected to dev_guide.md and should not be tracked
+AGENTS.md
