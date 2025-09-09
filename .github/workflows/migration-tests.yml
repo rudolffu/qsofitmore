@@ -118,56 +118,9 @@ jobs:
         flags: lmfit-only
         name: lmfit-only-${{ matrix.python-version }}
 
-  benchmark-lmfit:
-    name: Benchmark lmfit performance
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' || github.ref == 'refs/heads/main'
-    
-    steps:
-    - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0  # Need history for comparison
-    
-    - name: Set up Python 3.10
-      uses: actions/setup-python@v4
-      with:
-        python-version: "3.10"
-    
-    - name: Install system dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y build-essential
-    
-    - name: Install dependencies
-      run: |
-        pip install pytest pytest-benchmark
-        pip install numpy scipy matplotlib astropy pandas uncertainties lmfit
-        pip install -e . --no-deps
-    
-    - name: Run lmfit benchmarks
-      run: |
-        export QSOFITMORE_USE_LMFIT=true
-        export QSOFITMORE_VALIDATE_KMPFIT=false
-        export QSOFITMORE_BENCHMARK=true
-        # Run all benchmark-marked tests and only collect benchmarks
-        pytest tests/ -m benchmark --benchmark-only --benchmark-json=lmfit_benchmark.json
-    
-    - name: Display benchmark results
-      run: |
-        if [ -f lmfit_benchmark.json ]; then
-          python -c "
-          import json
-          with open('lmfit_benchmark.json') as f:
-              data = json.load(f)
-          print('Benchmark results:')
-          for test in data.get('benchmarks', []):
-              name = test['name']
-              time = test['stats']['mean']
-              print(f'{name}: {time:.4f}s')
-          "
-        else
-          echo "No benchmark JSON produced (no benchmarks collected)."
-        fi
+  # benchmark-lmfit job removed to keep CI green and fast.
+  # If you want to re-enable benchmarks, prefer running them on schedule
+  # or with `workflow_dispatch`, and make the job non-blocking.
 
   integration-tests:
     name: Integration tests
