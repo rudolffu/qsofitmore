@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "qsofitmore"
 version = "1.2.2"
-description = "QSO fitting tool with advanced features"
+description = "a python package for fitting UV-optical spectra of quasars"
 readme = "README.md"
 license = {text = "GNU General Public License v3.0"}
 authors = [
