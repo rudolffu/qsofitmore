@@ -55,6 +55,34 @@ python -m pip install .
 python -m pip install -e .
 ```
 
+### Using legacy kmpfit (optional)
+
+By default, qsofitmore uses the lmfit-based fitting paths. The legacy kmpfit path is still available but requires the optional Kapteyn package.
+
+- Install Kapteyn (optional):
+  ```bash
+  pip install "cython<3.0"
+  pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
+  # or via optional extra
+  pip install .[legacy]
+  ```
+
+- Enable legacy kmpfit at runtime (if you prefer kmpfit over lmfit):
+  ```python
+  from qsofitmore.config import migration_config
+  migration_config.use_lmfit = False  # use legacy kmpfit path
+  ```
+
+- If Kapteyn is not installed and you try to use kmpfit, qsofitmore will print a friendly warning on import and raise a clear ImportError when a kmpfit path is invoked. To avoid this, either install Kapteyn (above) or enable lmfit:
+  ```python
+  from qsofitmore.config import migration_config
+  migration_config.use_lmfit = True
+  ```
+
+- CI and tox:
+  - kmpfit-specific tox envs install Kapteyn automatically.
+  - Example: `tox -e py311-kmpfit`
+
 ## 2. Tutorial
  
 This tutorial can be run under `examples` directory of `qsofitmore`. 
