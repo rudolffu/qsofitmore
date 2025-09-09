@@ -7,21 +7,27 @@ from astropy.cosmology import FlatLambdaCDM
 import matplotlib
 import matplotlib.pyplot as plt
 import numpy as np
-from uncertainties import ufloat
-from uncertainties.umath import *
+from uncertainties import ufloat, umath
 
 
 def broken_pl_model(wave, a1, a2, b):
-    w_blue = wave[wave<4661]
-    w_red = wave[wave>=4661]
-    if len(w_blue)>0 and len(w_red)>0:
-        w_break = wave[wave<4661][-1]
-        f_blue = b*(w_blue/3.0e3)**a1
-        f_red = f_blue[-1]*(w_red/w_break)**a2
-        f_all = np.concatenate((f_blue,f_red), axis=None)
-    elif len(w_blue)>0 and len(w_red)==0:
-        f_all = b*(wave/3.0e3)**a1
-    return f_all
+    """
+    Broken power-law continuum with continuity at 4661 Å and pivot at 3000 Å.
+    a1: blue-side slope; a2: red-side slope; b: normalization at 3000 Å (blue).
+    Returns an array aligned to the input wavelength order.
+    """
+    wave = np.asarray(wave, dtype=float)
+    f = np.zeros_like(wave, dtype=float)
+    mask_blue = wave < 4661.0
+    mask_red = ~mask_blue
+    # Blue side: simple PL anchored at 3000 Å
+    if np.any(mask_blue):
+        f[mask_blue] = b * (wave[mask_blue] / 3000.0) ** a1
+    # Red side: ensure continuity at 4661 Å
+    if np.any(mask_red):
+        f_break = b * (4661.0 / 3000.0) ** a1
+        f[mask_red] = f_break * (wave[mask_red] / 4661.0) ** a2
+    return f
 
 # Return LaTeX name for a line / complex name
 def texlinename(name) -> str:
@@ -90,69 +96,239 @@ def flux_to_luminosity(flux, z):
     return L
 
 
-def mbh_ha_only(fwhm, fwhm_err, LOGLHA, LOGLHA_ERR):
+def mbh_ha_only(fwhm, LOGLHA, fwhm_err=0, LOGLHA_ERR=0, instrument_fwhm=0):
     """
     Calculate black hole mass using Halpha line width and luminosity
         based on Greene & Ho 2005, ApJ, 630, 122
+    
+    Parameters:
+    -----------
+    fwhm : float
+        H-alpha line FWHM in km/s
+    LOGLHA : float
+        Log10 of H-alpha luminosity
+    fwhm_err : float, optional
+        Uncertainty in FWHM (default: 0)
+    LOGLHA_ERR : float, optional
+        Uncertainty in log luminosity (default: 0)
+    instrument_fwhm : float, optional
+        Instrumental FWHM in km/s to be corrected (default: 0)
     """
-    if fwhm * fwhm_err * LOGLHA * LOGLHA_ERR != 0:
-        ufwhm = ufloat(fwhm, fwhm_err)
-        uLHa = 10 ** ufloat(LOGLHA, LOGLHA_ERR)
-        mbh = 2e6 * (uLHa/1e42)**0.55 * (ufwhm/1000)**2.06
-        logmbh = log10(mbh)
+    # Apply instrumental FWHM correction if provided
+    if instrument_fwhm > 0:
+        if fwhm**2 > instrument_fwhm**2:
+            fwhm_corrected = np.sqrt(fwhm**2 - instrument_fwhm**2)
+            # Propagate error for corrected FWHM if uncertainties are provided
+            if fwhm_err > 0:
+                fwhm_err_corrected = np.sqrt((fwhm * fwhm_err / fwhm_corrected)**2)
+            else:
+                fwhm_err_corrected = 0
+        else:
+            # If instrument FWHM is larger than measured FWHM, return NaN
+            return np.nan, 0.0 if fwhm_err == 0 and LOGLHA_ERR == 0 else (np.nan, np.nan)
     else:
-        logmbh = ufloat(np.nan, np.nan)
-    return logmbh.n, logmbh.s
+        fwhm_corrected = fwhm
+        fwhm_err_corrected = fwhm_err
+    
+    if fwhm_corrected != 0 and LOGLHA != 0:
+        if fwhm_err_corrected == 0 and LOGLHA_ERR == 0:
+            # No uncertainties provided, return point estimate
+            LHa = 10 ** LOGLHA
+            mbh = 2e6 * (LHa/1e42)**0.55 * (fwhm_corrected/1000)**2.06
+            logmbh_val = np.log10(mbh)
+            return logmbh_val, 0.0
+        else:
+            # Calculate with uncertainties
+            ufwhm = ufloat(fwhm_corrected, fwhm_err_corrected)
+            uLHa = 10 ** ufloat(LOGLHA, LOGLHA_ERR)
+            mbh = 2e6 * (uLHa/1e42)**0.55 * (ufwhm/1000)**2.06
+            logmbh = umath.log10(mbh)
+            return logmbh.n, logmbh.s
+    else:
+        if fwhm_err_corrected == 0 and LOGLHA_ERR == 0:
+            return np.nan, 0.0
+        else:
+            logmbh = ufloat(np.nan, np.nan)
+            return logmbh.n, logmbh.s
 
 
-def mbh_hb(fwhm, fwhm_err, L5100, L5100_err):
-    if fwhm * fwhm_err * L5100 * L5100_err != 0:
-        ufwhm = ufloat(fwhm, fwhm_err)
-        uL5100 = 10 ** ufloat(L5100, L5100_err)
-        logmbh = log10(ufwhm**2 * (uL5100*1e-44)**0.5)+0.91
+def mbh_hb(fwhm, L5100, fwhm_err=0, L5100_err=0, instrument_fwhm=0):
+    """
+    Calculate black hole mass using H-beta line width and 5100A luminosity
+    
+    Parameters:
+    -----------
+    fwhm : float
+        H-beta line FWHM in km/s
+    L5100 : float
+        Log10 of 5100A luminosity
+    fwhm_err : float, optional
+        Uncertainty in FWHM (default: 0)
+    L5100_err : float, optional
+        Uncertainty in log luminosity (default: 0)
+    instrument_fwhm : float, optional
+        Instrumental FWHM in km/s to be corrected (default: 0)
+    """
+    # Apply instrumental FWHM correction if provided
+    if instrument_fwhm > 0:
+        if fwhm**2 > instrument_fwhm**2:
+            fwhm_corrected = np.sqrt(fwhm**2 - instrument_fwhm**2)
+            # Propagate error for corrected FWHM if uncertainties are provided
+            if fwhm_err > 0:
+                fwhm_err_corrected = np.sqrt((fwhm * fwhm_err / fwhm_corrected)**2)
+            else:
+                fwhm_err_corrected = 0
+        else:
+            # If instrument FWHM is larger than measured FWHM, return NaN
+            return np.nan, 0.0 if fwhm_err == 0 and L5100_err == 0 else (np.nan, np.nan)
     else:
-        logmbh = ufloat(np.nan, np.nan)
-    return logmbh.n, logmbh.s
+        fwhm_corrected = fwhm
+        fwhm_err_corrected = fwhm_err
+    
+    if fwhm_corrected != 0 and L5100 != 0:
+        if fwhm_err_corrected == 0 and L5100_err == 0:
+            # No uncertainties provided, return point estimate
+            L5100_linear = 10 ** L5100
+            logmbh_val = np.log10(fwhm_corrected**2 * (L5100_linear*1e-44)**0.5) + 0.91
+            return logmbh_val, 0.0
+        else:
+            # Calculate with uncertainties
+            ufwhm = ufloat(fwhm_corrected, fwhm_err_corrected)
+            uL5100 = 10 ** ufloat(L5100, L5100_err)
+            logmbh = umath.log10(ufwhm**2 * (uL5100*1e-44)**0.5)+0.91
+            return logmbh.n, logmbh.s
+    else:
+        if fwhm_err_corrected == 0 and L5100_err == 0:
+            return np.nan, 0.0
+        else:
+            logmbh = ufloat(np.nan, np.nan)
+            return logmbh.n, logmbh.s
 
 
 mbh_hb_df = lambda x: mbh_hb(
     x['Hb_whole_br_fwhm'],
-    x['Hb_whole_br_fwhm_err'],
     x['L5100'],
+    x['Hb_whole_br_fwhm_err'],
     x['L5100_err'])
 
 
-def mbh_mgii(fwhm, fwhm_err, L3000, L3000_err):
-    if fwhm * fwhm_err * L3000 * L3000_err != 0:
-        ufwhm = ufloat(fwhm, fwhm_err)
-        uL3000 = 10 ** ufloat(L3000, L3000_err)
-        logmbh = log10(ufwhm**1.51 * (uL3000*1e-44)**0.5)+2.60
+def mbh_mgii(fwhm, L3000, fwhm_err=0, L3000_err=0, instrument_fwhm=0):
+    """
+    Calculate black hole mass using MgII line width and 3000A luminosity
+    
+    Parameters:
+    -----------
+    fwhm : float
+        MgII line FWHM in km/s
+    L3000 : float
+        Log10 of 3000A luminosity
+    fwhm_err : float, optional
+        Uncertainty in FWHM (default: 0)
+    L3000_err : float, optional
+        Uncertainty in log luminosity (default: 0)
+    instrument_fwhm : float, optional
+        Instrumental FWHM in km/s to be corrected (default: 0)
+    """
+    # Apply instrumental FWHM correction if provided
+    if instrument_fwhm > 0:
+        if fwhm**2 > instrument_fwhm**2:
+            fwhm_corrected = np.sqrt(fwhm**2 - instrument_fwhm**2)
+            # Propagate error for corrected FWHM if uncertainties are provided
+            if fwhm_err > 0:
+                fwhm_err_corrected = np.sqrt((fwhm * fwhm_err / fwhm_corrected)**2)
+            else:
+                fwhm_err_corrected = 0
+        else:
+            # If instrument FWHM is larger than measured FWHM, return NaN
+            return np.nan, 0.0 if fwhm_err == 0 and L3000_err == 0 else (np.nan, np.nan)
     else:
-        logmbh = ufloat(np.nan, np.nan)
-    return logmbh.n, logmbh.s
+        fwhm_corrected = fwhm
+        fwhm_err_corrected = fwhm_err
+    
+    if fwhm_corrected != 0 and L3000 != 0:
+        if fwhm_err_corrected == 0 and L3000_err == 0:
+            # No uncertainties provided, return point estimate
+            L3000_linear = 10 ** L3000
+            logmbh_val = np.log10(fwhm_corrected**1.51 * (L3000_linear*1e-44)**0.5) + 2.60
+            return logmbh_val, 0.0
+        else:
+            # Calculate with uncertainties
+            ufwhm = ufloat(fwhm_corrected, fwhm_err_corrected)
+            uL3000 = 10 ** ufloat(L3000, L3000_err)
+            logmbh = umath.log10(ufwhm**1.51 * (uL3000*1e-44)**0.5)+2.60
+            return logmbh.n, logmbh.s
+    else:
+        if fwhm_err_corrected == 0 and L3000_err == 0:
+            return np.nan, 0.0
+        else:
+            logmbh = ufloat(np.nan, np.nan)
+            return logmbh.n, logmbh.s
 
 
 mbh_mgii_df = lambda x: mbh_mgii(
     x['MgII_whole_br_fwhm'],
-    x['MgII_whole_br_fwhm_err'],
     x['L3000'],
+    x['MgII_whole_br_fwhm_err'],
     x['L3000_err'])
 
 
-def mbh_civ(fwhm, fwhm_err, L1350, L1350_err):
-    if fwhm * fwhm_err * L1350 * L1350_err != 0:
-        ufwhm = ufloat(fwhm, fwhm_err)
-        uL1350 = 10 ** ufloat(L1350, L1350_err)
-        logmbh = log10(ufwhm**2 * (uL1350*1e-44)**0.53)+0.66
+def mbh_civ(fwhm, L1350, fwhm_err=0, L1350_err=0, instrument_fwhm=0):
+    """
+    Calculate black hole mass using CIV line width and 1350A luminosity
+    
+    Parameters:
+    -----------
+    fwhm : float
+        CIV line FWHM in km/s
+    L1350 : float
+        Log10 of 1350A luminosity
+    fwhm_err : float, optional
+        Uncertainty in FWHM (default: 0)
+    L1350_err : float, optional
+        Uncertainty in log luminosity (default: 0)
+    instrument_fwhm : float, optional
+        Instrumental FWHM in km/s to be corrected (default: 0)
+    """
+    # Apply instrumental FWHM correction if provided
+    if instrument_fwhm > 0:
+        if fwhm**2 > instrument_fwhm**2:
+            fwhm_corrected = np.sqrt(fwhm**2 - instrument_fwhm**2)
+            # Propagate error for corrected FWHM if uncertainties are provided
+            if fwhm_err > 0:
+                fwhm_err_corrected = np.sqrt((fwhm * fwhm_err / fwhm_corrected)**2)
+            else:
+                fwhm_err_corrected = 0
+        else:
+            # If instrument FWHM is larger than measured FWHM, return NaN
+            return np.nan, 0.0 if fwhm_err == 0 and L1350_err == 0 else (np.nan, np.nan)
     else:
-        logmbh = ufloat(np.nan, np.nan)
-    return logmbh.n, logmbh.s
+        fwhm_corrected = fwhm
+        fwhm_err_corrected = fwhm_err
+    
+    if fwhm_corrected != 0 and L1350 != 0:
+        if fwhm_err_corrected == 0 and L1350_err == 0:
+            # No uncertainties provided, return point estimate
+            L1350_linear = 10 ** L1350
+            logmbh_val = np.log10(fwhm_corrected**2 * (L1350_linear*1e-44)**0.53) + 0.66
+            return logmbh_val, 0.0
+        else:
+            # Calculate with uncertainties
+            ufwhm = ufloat(fwhm_corrected, fwhm_err_corrected)
+            uL1350 = 10 ** ufloat(L1350, L1350_err)
+            logmbh = umath.log10(ufwhm**2 * (uL1350*1e-44)**0.53)+0.66
+            return logmbh.n, logmbh.s
+    else:
+        if fwhm_err_corrected == 0 and L1350_err == 0:
+            return np.nan, 0.0
+        else:
+            logmbh = ufloat(np.nan, np.nan)
+            return logmbh.n, logmbh.s
 
 
 mbh_civ_df = lambda x: mbh_civ(
     x['CIV_whole_br_fwhm'],
-    x['CIV_whole_br_fwhm_err'],
     x['L1350'],
+    x['CIV_whole_br_fwhm_err'],
     x['L1350_err'])
 
 

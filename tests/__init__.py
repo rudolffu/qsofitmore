@@ -1,0 +1,1 @@
+# Test suite for qsofitmore migration from kmpfit to lmfit
