@@ -34,7 +34,6 @@ dependencies = [
     "matplotlib",
     "astropy",
     "pandas",
-    "kapteyn",  # TODO: Remove after migration to lmfit is complete
     "lmfit>=1.3.0",  # New dependency for migration from kapteyn.kmpfit
     "dustmaps",
 ]
@@ -45,6 +44,9 @@ dev = [
     "pytest-benchmark",  # For performance testing during migration
     "black",
     "flake8",
+]
+legacy = [
+    "kapteyn",  # Optional legacy dependency for kmpfit path
 ]
 
 [project.urls]

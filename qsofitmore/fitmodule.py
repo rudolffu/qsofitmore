@@ -8,7 +8,10 @@ import numpy as np
 import matplotlib.pyplot as plt
 from scipy import interpolate
 from scipy import integrate
-from kapteyn import kmpfit
+try:
+    from kapteyn import kmpfit as _kmpfit
+except Exception:
+    _kmpfit = None
 from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 from astropy.table import Table
@@ -363,7 +366,9 @@ class QSOFitNew:
         if getattr(migration_config, 'use_lmfit_continuum', False):
             conti_fit = self._fit_continuum_lmfit(wave[tmp_all], flux[tmp_all], err[tmp_all], pp0, tmp_parinfo)
         else:
-            conti_fit = kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
+            if _kmpfit is None:
+                raise ImportError("kapteyn is required for kmpfit path. Install with: pip install 'cython<3.0' && pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz or enable lmfit via migration_config.use_lmfit_continuum=True")
+            conti_fit = _kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
             conti_fit.parinfo = tmp_parinfo
             conti_fit.fit(params0=pp0)
         
@@ -392,7 +397,7 @@ class QSOFitNew:
                     wave[tmp_all][ind_noBAL], self.Smooth(flux[tmp_all][ind_noBAL], 10), err[tmp_all][ind_noBAL],
                     pp0, tmp_parinfo)
             else:
-                _f = kmpfit.Fitter(residuals=self._residuals, data=(
+                _f = _kmpfit.Fitter(residuals=self._residuals, data=(
                     wave[tmp_all][ind_noBAL], self.Smooth(flux[tmp_all][ind_noBAL], 10), err[tmp_all][ind_noBAL]))
                 conti_fit.parinfo = tmp_parinfo
                 conti_fit.fit(params0=pp0)
@@ -1584,6 +1589,8 @@ class QSOFitNew:
                     if getattr(migration_config, 'use_lmfit_lines', False):
                         line_fit = self._do_line_lmfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                     else:
+                        if _kmpfit is None:
+                            raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
                         line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
@@ -1607,6 +1614,8 @@ class QSOFitNew:
                             if getattr(migration_config, 'use_lmfit_lines', False):
                                 line_fit = self._do_line_lmfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                             else:
+                                if _kmpfit is None:
+                                    raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
                                 line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                    
                     # calculate uncertainties (always save errors)
