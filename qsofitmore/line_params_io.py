@@ -49,6 +49,8 @@ COL_DTYPES = [
     "f4",   # fvalue
 ]
 
+_C_KMS = 299792.458
+
 
 def _ensure_table_schema(tab: Table) -> Table:
     """Ensure table has the expected columns in the expected order.
@@ -110,6 +112,10 @@ def csv_to_fits(csv_path: str, fits_path: str, header: Optional[fits.Header] = N
     hdu.name = "data"
     # Merge/attach descriptive header if provided
     hdr = header or _default_header()
+    # Record velocity unit if provided via environment
+    vel_env = os.environ.get('QSOFITMORE_VELOCITY_UNITS', '').strip().lower()
+    if vel_env in ("km/s", "kms", "kmps"):
+        hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
     for key, val in hdr.items():
         try:
             comment = hdr.comments[key]
@@ -175,6 +181,9 @@ def yaml_to_fits(yaml_path: str, fits_path: str, header: Optional[fits.Header] =
     hdu = table_to_hdu(t)
     hdu.name = "data"
     hdr = header or _default_header()
+    vel_env = os.environ.get('QSOFITMORE_VELOCITY_UNITS', '').strip().lower()
+    if vel_env in ("km/s", "kms", "kmps"):
+        hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
     for key, val in hdr.items():
         try:
             comment = hdr.comments[key]
@@ -239,3 +248,71 @@ def write_template_yaml(yaml_path: str) -> None:
     ]
     with open(yaml_path, "w", encoding="utf-8") as f:
         yaml.safe_dump(example, f, sort_keys=False)
+
+
+# ---------- Converters: ln(lambda) -> km/s ----------
+
+def _table_lnlambda_to_kms(t: Table) -> Table:
+    """Convert legacy ln(lambda) columns (inisig/minsig/maxsig/voff) to km/s in-place.
+    Uses small-velocity approximation: v_kms = value * c.
+    """
+    t = _ensure_table_schema(t)
+    for col in ("inisig", "minsig", "maxsig", "voff"):
+        t[col] = np.array(t[col], dtype=float) * _C_KMS
+    return t
+
+
+def convert_csv_lnlambda_to_kms(csv_in: str, csv_out: str) -> None:
+    """Read CSV in legacy ln(lambda) units and write CSV with km/s for
+    inisig/minsig/maxsig/voff."""
+    t = Table.read(csv_in, format="csv")
+    t2 = _table_lnlambda_to_kms(t)
+    t2.write(csv_out, format="csv", overwrite=True)
+
+
+def convert_yaml_lnlambda_to_kms(yaml_in: str, yaml_out: str) -> None:
+    """Read YAML list in legacy ln(lambda) units and write YAML with km/s for
+    inisig/minsig/maxsig/voff."""
+    try:
+        import yaml  # type: ignore
+    except Exception as exc:  # pragma: no cover
+        raise RuntimeError("PyYAML is required for YAML conversion. Try: pip install pyyaml") from exc
+    with open(yaml_in, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f) or []
+    if not isinstance(data, list):
+        raise ValueError("YAML must be a list of records")
+    out = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        itm = dict(item)
+        for col in ("inisig", "minsig", "maxsig", "voff"):
+            if col in itm and itm[col] is not None:
+                try:
+                    itm[col] = float(itm[col]) * _C_KMS
+                except Exception:
+                    pass
+        out.append(itm)
+    with open(yaml_out, "w", encoding="utf-8") as f:
+        yaml.safe_dump(out, f, sort_keys=False)
+
+
+def convert_fits_lnlambda_to_kms(fits_in: str, fits_out: str) -> None:
+    """Read FITS table in legacy ln(lambda) units and write FITS with km/s for
+    inisig/minsig/maxsig/voff, recording VELUNIT='km/s'."""
+    t = Table.read(fits_in)
+    t2 = _table_lnlambda_to_kms(t)
+    hdu = table_to_hdu(t2)
+    hdu.name = "data"
+    hdr = _default_header()
+    hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
+    for key, val in hdr.items():
+        try:
+            comment = hdr.comments[key]
+        except Exception:
+            comment = None
+        if comment is None:
+            hdu.header[key] = val
+        else:
+            hdu.header[key] = (val, comment)
+    hdu.writeto(fits_out, overwrite=True)

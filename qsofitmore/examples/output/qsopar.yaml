@@ -4,10 +4,10 @@
   maxwav: 6800.0
   linename: Ha_br
   ngauss: 3.0
-  inisig: 0.004999999888241291
-  minsig: 0.003000000026077032
-  maxsig: 0.009999999776482582
-  voff: 0.004999999888241291
+  inisig: 1498.96229
+  minsig: 899.37737
+  maxsig: 2997.92458
+  voff: 1498.96229
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -18,10 +18,10 @@
   maxwav: 6800.0
   linename: Ha_na
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0005000000237487257
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 149.89623
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -32,10 +32,10 @@
   maxwav: 6800.0
   linename: NII6549
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 1.0
   windex: 1.0
   findex: 1.0
@@ -46,10 +46,10 @@
   maxwav: 6800.0
   linename: NII6585
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 1.0
   windex: 1.0
   findex: 1.0
@@ -60,10 +60,10 @@
   maxwav: 6800.0
   linename: SII6718
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 1.0
   windex: 1.0
   findex: 2.0
@@ -74,10 +74,10 @@
   maxwav: 6800.0
   linename: SII6732
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 1.0
   windex: 1.0
   findex: 2.0
@@ -88,10 +88,10 @@
   maxwav: 5100.0
   linename: Hb_br
   ngauss: 3.0
-  inisig: 0.004999999888241291
-  minsig: 0.003000000026077032
-  maxsig: 0.009999999776482582
-  voff: 0.003000000026077032
+  inisig: 1498.96229
+  minsig: 899.37737
+  maxsig: 2997.92458
+  voff: 899.37737
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -102,10 +102,10 @@
   maxwav: 5100.0
   linename: Hb_na
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -116,10 +116,10 @@
   maxwav: 5100.0
   linename: OIII4959
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -130,10 +130,10 @@
   maxwav: 5100.0
   linename: OIII5007
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -144,10 +144,10 @@
   maxwav: 5100.0
   linename: OIII4959w
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 2.0
   windex: 2.0
   findex: 0.0
@@ -158,10 +158,10 @@
   maxwav: 5100.0
   linename: OIII5007w
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 2.0
   windex: 2.0
   findex: 0.0
@@ -172,10 +172,10 @@
   maxwav: 4440.0
   linename: Hg_br
   ngauss: 1.0
-  inisig: 0.004999999888241291
-  minsig: 0.004000000189989805
-  maxsig: 0.02500000037252903
-  voff: 0.0017000000225380063
+  inisig: 1498.96229
+  minsig: 1199.16985
+  maxsig: 7494.81146
+  voff: 509.64718
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -186,10 +186,10 @@
   maxwav: 4440.0
   linename: Hg_na
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -200,10 +200,10 @@
   maxwav: 3800.0
   linename: OII3728
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0003333000058773905
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 99.92083
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 1.0
   windex: 1.0
   findex: 0.0
@@ -214,10 +214,10 @@
   maxwav: 3480.0
   linename: NeV3426
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0003333000058773905
-  maxsig: 0.0017000000225380063
-  voff: 0.004999999888241291
+  inisig: 299.79246
+  minsig: 99.92083
+  maxsig: 509.64718
+  voff: 1498.96229
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -228,10 +228,10 @@
   maxwav: 2900.0
   linename: MgII_br
   ngauss: 2.0
-  inisig: 0.004999999888241291
-  minsig: 0.004000000189989805
-  maxsig: 0.014999999664723873
-  voff: 0.0017000000225380063
+  inisig: 1498.96229
+  minsig: 1199.16985
+  maxsig: 4496.88687
+  voff: 509.64718
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -242,10 +242,10 @@
   maxwav: 2900.0
   linename: MgII_na
   ngauss: 1.0
-  inisig: 0.0010000000474974513
-  minsig: 0.0002300000051036477
-  maxsig: 0.0017000000225380063
-  voff: 0.009999999776482582
+  inisig: 299.79246
+  minsig: 68.95227
+  maxsig: 509.64718
+  voff: 2997.92458
   vindex: 0.0
   windex: 0.0
   findex: 0.0
@@ -256,10 +256,10 @@
   maxwav: 1970.0
   linename: CIII_br
   ngauss: 2.0
-  inisig: 0.004999999888241291
-  minsig: 0.004000000189989805
-  maxsig: 0.014999999664723873
-  voff: 0.014999999664723873
+  inisig: 1498.96229
+  minsig: 1199.16985
+  maxsig: 4496.88687
+  voff: 4496.88687
   vindex: 99.0
   windex: 0.0
   findex: 0.0
@@ -270,10 +270,10 @@
   maxwav: 1700.0
   linename: CIV_br
   ngauss: 3.0
-  inisig: 0.004999999888241291
-  minsig: 0.004000000189989805
-  maxsig: 0.014999999664723873
-  voff: 0.014999999664723873
+  inisig: 1498.96229
+  minsig: 1199.16985
+  maxsig: 4496.88687
+  voff: 4496.88687
   vindex: 0.0
   windex: 0.0
   findex: 0.0
