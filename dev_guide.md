@@ -103,6 +103,41 @@ Configured in `qsofitmore/config.py` and used in tests/CI. Defaults shown in par
 - `QSOFITMORE_BENCHMARK` (false): Enable performance benchmarks.
 - Tolerances: `QSOFITMORE_RTOL` (1e-6), `QSOFITMORE_ATOL` (1e-8).
 
+#### Linear Wavelength Mode + km/s Parameters
+
+For easier parameter limits and interpretation, you can fit emission lines on a linear wavelength axis and specify Gaussian widths/offsets in km/s:
+
+- `QSOFITMORE_WAVE_SCALE` (`log`|`linear`): choose the model axis for line fitting. Defaults to `log` for backward compatibility.
+- `QSOFITMORE_VELOCITY_UNITS` (`lnlambda`|`km/s`): units for `inisig/minsig/maxsig/voff` in the line parameter tables. Use `km/s` for linear mode.
+- `QSOFITMORE_NARROW_MAX_KMS` (default `1200`): maximum allowed Gaussian sigma for “narrow” components (applied to non-`*br` lines).
+
+Example session:
+```python
+import os
+os.environ['QSOFITMORE_WAVE_SCALE'] = 'linear'
+os.environ['QSOFITMORE_VELOCITY_UNITS'] = 'km/s'
+os.environ['QSOFITMORE_NARROW_MAX_KMS'] = '1200'
+from qsofitmore import QSOFitNew
+```
+
+CSV/YAML conversion utilities (legacy ln(lambda) → km/s) live in `qsofitmore/line_params_io.py`:
+
+```python
+from qsofitmore.line_params_io import (
+    convert_csv_lnlambda_to_kms, convert_yaml_lnlambda_to_kms,
+    csv_to_fits, yaml_to_fits,
+)
+
+# Convert legacy tables
+convert_csv_lnlambda_to_kms('examples/output/qsopar.csv', 'examples/output/qsopar.csv')
+convert_yaml_lnlambda_to_kms('examples/output/qsopar.yaml', 'examples/output/qsopar.yaml')
+
+# Write FITS; header will record VELUNIT=km/s when env is set
+csv_to_fits('examples/output/qsopar.csv', 'examples/output/qsopar.fits')
+```
+
+See `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb` for an end-to-end notebook using linear axis and km/s widths.
+
 Examples:
 ```bash
 export QSOFITMORE_USE_LMFIT=true
