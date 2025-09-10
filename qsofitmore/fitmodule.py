@@ -90,6 +90,97 @@ class QSOFitNew:
         self.in_rest_frame = in_rest_frame
         # pivot for the power‐law continuum (default 3000 Å)
         self.pl_pivot = 3000.0
+        # Wavelength/velocity configuration
+        self.wave_scale = migration_config.wave_scale  # 'log' or 'linear'
+        self.velocity_units = migration_config.velocity_units  # 'lnlambda' or 'km/s'
+        self._c_kms = 299792.458
+
+    # -------- Axis/units helpers (for gradual migration) --------
+    def _x_axis(self, wave):
+        """Return model x-axis from wavelength array according to configured scale."""
+        return np.log(wave) if self.wave_scale == 'log' else wave
+
+    def _axis_to_lambda(self, x):
+        """Convert model x-axis back to wavelength."""
+        return np.exp(x) if self.wave_scale == 'log' else x
+
+    def _sigma_axis_units(self, sigma_value, lambda_rest):
+        """Convert table sigma value to model-axis sigma.
+        - If wave_scale == 'log': sigma_ln = sigma_value if units are lnlambda; if km/s -> sigma_ln = (sigma_kms / c)
+        - If wave_scale == 'linear': sigma_lambda =
+              if km/s -> (sigma_kms / c) * lambda_rest
+              if lnlambda -> sigma_ln * lambda_rest (local linearization)
+        """
+        if self.wave_scale == 'log':
+            if self.velocity_units == 'km/s':
+                return float(sigma_value) / self._c_kms
+            else:
+                return float(sigma_value)
+        else:
+            if self.velocity_units == 'km/s':
+                return (float(sigma_value) / self._c_kms) * float(lambda_rest)
+            else:
+                return float(sigma_value) * float(lambda_rest)
+
+    def _center_param_and_bounds(self, lambda_rest, voff_value):
+        """Compute center parameter value and bounds for the selected axis and units.
+        Returns (center_value, lower_bound, upper_bound) in model-axis units.
+        """
+        lam0 = float(lambda_rest)
+        if self.wave_scale == 'log':
+            center = np.log(lam0)
+            if self.velocity_units == 'km/s':
+                dv_c = float(voff_value) / self._c_kms
+            else:
+                dv_c = float(voff_value)
+            return center, center - dv_c, center + dv_c
+        else:
+            center = lam0
+            # For bounds, keep exact multiplicative mapping: lam * exp(± dv/c)
+            if self.velocity_units == 'km/s':
+                dv_c = float(voff_value) / self._c_kms
+            else:
+                dv_c = float(voff_value)
+            lower = lam0 * np.exp(-dv_c)
+            upper = lam0 * np.exp(+dv_c)
+            return center, lower, upper
+
+    def _apply_ties_inplace(self, pp):
+        """Apply tying for centers/widths/flux according to current axis.
+        Mutates and returns pp.
+        """
+        # Tie centers
+        if self.tie_lambda:
+            if len(self.ind_tie_vindex1) > 1:
+                base = int(self.ind_tie_vindex1[0])
+                for xx in range(len(self.ind_tie_vindex1) - 1):
+                    idx = int(self.ind_tie_vindex1[xx + 1])
+                    if self.wave_scale == 'log':
+                        pp[idx] = pp[base] + self.delta_lambda1[xx]
+                    else:
+                        pp[idx] = pp[base] * np.exp(self.delta_lambda1[xx])
+            if len(self.ind_tie_vindex2) > 1:
+                base = int(self.ind_tie_vindex2[0])
+                for xx in range(len(self.ind_tie_vindex2) - 1):
+                    idx = int(self.ind_tie_vindex2[xx + 1])
+                    if self.wave_scale == 'log':
+                        pp[idx] = pp[base] + self.delta_lambda2[xx]
+                    else:
+                        pp[idx] = pp[base] * np.exp(self.delta_lambda2[xx])
+        # Tie widths
+        if self.tie_width:
+            if len(self.ind_tie_windex1) > 1:
+                for xx in range(len(self.ind_tie_windex1) - 1):
+                    pp[int(self.ind_tie_windex1[xx + 1])] = pp[int(self.ind_tie_windex1[0])]
+            if len(self.ind_tie_windex2) > 1:
+                for xx in range(len(self.ind_tie_windex2) - 1):
+                    pp[int(self.ind_tie_windex2[xx + 1])] = pp[int(self.ind_tie_windex2[0])]
+        # Tie flux ratios
+        if len(self.ind_tie_findex1) > 0 and self.tie_flux_1:
+            pp[int(self.ind_tie_findex1[1])] = pp[int(self.ind_tie_findex1[0])] * self.fvalue_factor_1
+        if len(self.ind_tie_findex2) > 0 and self.tie_flux_2:
+            pp[int(self.ind_tie_findex2[1])] = pp[int(self.ind_tie_findex2[0])] * self.fvalue_factor_2
+        return pp
 
 
     @classmethod
@@ -1004,26 +1095,25 @@ class QSOFitNew:
         except Exception:
             raise ImportError("lmfit is required for lmfit line path but is not available.")
 
-        # Build initial parameter vector and bounds as in kmpfit
+        # Build initial parameter vector and bounds with axis/units conversion
         line_fit_ini = np.array([])
         line_fit_par = np.array([])
         for n in range(nline_fit):
             for nn in range(int(ngauss_fit[n])):
-                # initial values
-                line_fit_ini0 = [
-                    0.0,
-                    float(np.log(linelist['lambda'][ind_line][n])),
-                    float(linelist['inisig'][ind_line][n]),
-                ]
+                lam_rest = float(linelist['lambda'][ind_line][n])
+                inisig = float(linelist['inisig'][ind_line][n])
+                minsig = float(linelist['minsig'][ind_line][n])
+                maxsig = float(linelist['maxsig'][ind_line][n])
+                voff = float(linelist['voff'][ind_line][n])
+                center, low_c, up_c = self._center_param_and_bounds(lam_rest, voff)
+                sig0 = self._sigma_axis_units(inisig, lam_rest)
+                sig_low = self._sigma_axis_units(minsig, lam_rest)
+                sig_up = self._sigma_axis_units(maxsig, lam_rest)
+                line_fit_ini0 = [0.0, center, sig0]
                 line_fit_ini = np.concatenate([line_fit_ini, line_fit_ini0])
-                # bounds
-                lambda_center = float(np.log(linelist['lambda'][ind_line][n]))
-                v_off = float(linelist['voff'][ind_line][n])
-                sig_low = float(linelist['minsig'][ind_line][n])
-                sig_up = float(linelist['maxsig'][ind_line][n])
                 line_fit_par0 = [
                     {'limits': (0.0, 1e10)},
-                    {'limits': (lambda_center - v_off, lambda_center + v_off)},
+                    {'limits': (low_c, up_c)},
                     {'limits': (sig_low, sig_up)},
                 ]
                 line_fit_par = np.concatenate([line_fit_par, line_fit_par0])
@@ -1043,32 +1133,15 @@ class QSOFitNew:
                 lo, hi = b['limits']
                 params[name].set(min=float(lo), max=float(hi))
 
-        x = np.log(self.wave[ind_n])
+        x = self._x_axis(self.wave[ind_n])
         y = line_flux[ind_n]
         w = self.err[ind_n]
 
         def residual_func(pars, x, y, w):
             # Reconstruct parameter vector and apply ties
             pp = np.array([pars[f"p{j}"].value for j in range(n_params)], dtype=float)
-            # Tie logic (same as _residuals_line)
-            if self.tie_lambda:
-                if len(self.ind_tie_vindex1) > 1:
-                    for xx in range(len(self.ind_tie_vindex1) - 1):
-                        pp[int(self.ind_tie_vindex1[xx + 1])] = pp[int(self.ind_tie_vindex1[0])] + self.delta_lambda1[xx]
-                if len(self.ind_tie_vindex2) > 1:
-                    for xx in range(len(self.ind_tie_vindex2) - 1):
-                        pp[int(self.ind_tie_vindex2[xx + 1])] = pp[int(self.ind_tie_vindex2[0])] + self.delta_lambda2[xx]
-            if self.tie_width:
-                if len(self.ind_tie_windex1) > 1:
-                    for xx in range(len(self.ind_tie_windex1) - 1):
-                        pp[int(self.ind_tie_windex1[xx + 1])] = pp[int(self.ind_tie_windex1[0])]
-                if len(self.ind_tie_windex2) > 1:
-                    for xx in range(len(self.ind_tie_windex2) - 1):
-                        pp[int(self.ind_tie_windex2[xx + 1])] = pp[int(self.ind_tie_windex2[0])]
-            if len(self.ind_tie_findex1) > 0 and self.tie_flux_1:
-                pp[int(self.ind_tie_findex1[1])] = pp[int(self.ind_tie_findex1[0])] * self.fvalue_factor_1
-            if len(self.ind_tie_findex2) > 0 and self.tie_flux_2:
-                pp[int(self.ind_tie_findex2[1])] = pp[int(self.ind_tie_findex2[0])] * self.fvalue_factor_2
+            # Tie logic (unified)
+            pp = self._apply_ties_inplace(pp)
             self.newpp = pp.copy()
             return (y - self.Manygauss(x, pp)) / w
 
@@ -1082,24 +1155,7 @@ class QSOFitNew:
         # Final best-fit vector with ties applied
         pp_best = np.array([result.params[f"p{i}"].value for i in range(n_params)], dtype=float)
         # Apply tie logic once more to ensure vector consistency
-        if self.tie_lambda:
-            if len(self.ind_tie_vindex1) > 1:
-                for xx in range(len(self.ind_tie_vindex1) - 1):
-                    pp_best[int(self.ind_tie_vindex1[xx + 1])] = pp_best[int(self.ind_tie_vindex1[0])] + self.delta_lambda1[xx]
-            if len(self.ind_tie_vindex2) > 1:
-                for xx in range(len(self.ind_tie_vindex2) - 1):
-                    pp_best[int(self.ind_tie_vindex2[xx + 1])] = pp_best[int(self.ind_tie_vindex2[0])] + self.delta_lambda2[xx]
-        if self.tie_width:
-            if len(self.ind_tie_windex1) > 1:
-                for xx in range(len(self.ind_tie_windex1) - 1):
-                    pp_best[int(self.ind_tie_windex1[xx + 1])] = pp_best[int(self.ind_tie_windex1[0])]
-            if len(self.ind_tie_windex2) > 1:
-                for xx in range(len(self.ind_tie_windex2) - 1):
-                    pp_best[int(self.ind_tie_windex2[xx + 1])] = pp_best[int(self.ind_tie_windex2[0])]
-        if len(self.ind_tie_findex1) > 0 and self.tie_flux_1:
-            pp_best[int(self.ind_tie_findex1[1])] = pp_best[int(self.ind_tie_findex1[0])] * self.fvalue_factor_1
-        if len(self.ind_tie_findex2) > 0 and self.tie_flux_2:
-            pp_best[int(self.ind_tie_findex2[1])] = pp_best[int(self.ind_tie_findex2[0])] * self.fvalue_factor_2
+        pp_best = self._apply_ties_inplace(pp_best)
 
         fitres.params = pp_best
         fitres.result = result
@@ -1333,8 +1389,16 @@ class QSOFitNew:
             for p in range(int(len(temp_gauss_result)/mc_flag/3)):
                 # warn that the width used to separate narrow from broad is not exact 1200 km s-1 which would lead to wrong judgement
                 # if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
-                line_single = self.Onegauss(np.log(wave), temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag])
-                if temp_gauss_result[(2+p*3)*mc_flag] - 0.0017 <= 1e-10:    
+                params_p = temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag]
+                line_single = self.Onegauss(self._x_axis(wave), params_p)
+                # classify by velocity sigma threshold (~0.0017*c)
+                sigma_axis = params_p[2]
+                center_axis = params_p[1]
+                if self.wave_scale == 'log':
+                    sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
+                else:
+                    sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
+                if sigma_kms <= 0.0017 * self._c_kms:
                     color = 'g'
                     na_lines_total += line_single
                 else:
@@ -1702,7 +1766,7 @@ class QSOFitNew:
                     else:
                         if self.MC == True and self.n_trails > 0:
                             all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
-                                np.log(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
+                                self._x_axis(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
                                 self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
                             self.na_all_dict.update(na_dict)
                         else:
@@ -1958,9 +2022,18 @@ class QSOFitNew:
                     try:
                         par_ind = np.where(all_line_name==line)[0][0]*3
                         linecenter = float(linelist[linelist['linename']==line]['lambda'][0])
-                        na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'narrow')
-                        if line_fit.params[par_ind+2] > 0.0017:
-                            na_tmp = self.line_prop(linecenter, line_fit.params[par_ind:par_ind+3], 'broad')
+                        params_seg = line_fit.params[par_ind:par_ind+3]
+                        # classify by sigma in km/s
+                        sigma_axis = float(params_seg[2])
+                        center_axis = float(params_seg[1])
+                        if self.wave_scale == 'log':
+                            sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
+                        else:
+                            sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
+                        if sigma_kms > 0.0017 * self._c_kms:
+                            na_tmp = self.line_prop(linecenter, params_seg, 'broad')
+                        else:
+                            na_tmp = self.line_prop(linecenter, params_seg, 'narrow')
                         na_all_dict[line]['fwhm'].append(na_tmp[0])
                         na_all_dict[line]['sigma'].append(na_tmp[1])
                         na_all_dict[line]['ew'].append(na_tmp[2])
@@ -2107,22 +2180,30 @@ class QSOFitNew:
         The compcenter is the theortical vacuum wavelength for the broad compoenet.
         """
         pp = pp.astype(float)
+        # Determine broad/narrow by sigma in km/s
+        gcount = int(len(pp)/3)
+        if gcount == 0:
+            return 0., 0., 0., 0., 0.
+        centers = np.array([pp[3*i+1] for i in range(gcount)], dtype=float)
+        sigmas = np.array([pp[3*i+2] for i in range(gcount)], dtype=float)
+        if self.wave_scale == 'log':
+            sigma_kms = (np.exp(sigmas) - 1.0) * self._c_kms
+        else:
+            sigma_kms = (sigmas / np.clip(centers, 1e-20, np.inf)) * self._c_kms
+        thresh = 0.0017 * self._c_kms
         if linetype == 'broad':
-            ind_br = np.repeat(np.where(pp[2::3] > 0.0017, True, False), 3)
-        
+            mask_g = sigma_kms > thresh
         elif linetype == 'narrow':
-            ind_br = np.repeat(np.where(pp[2::3] <= 0.0017, True, False), 3)
-        
+            mask_g = sigma_kms <= thresh
         else:
             raise RuntimeError("line type should be 'broad' or 'narrow'!")
-        
+        ind_br = np.repeat(mask_g, 3)
         ind_br[9:] = False  # to exclude the broad OIII and broad He II
-        
         p = pp[ind_br]
         del pp
         pp = p
         
-        c = 299792.458  # km/s
+        c = self._c_kms  # km/s
         n_gauss = int(len(pp)/3)
         if n_gauss == 0:
             fwhm, sigma, ew, peak, area = 0., 0., 0., 0., 0.
@@ -2137,25 +2218,29 @@ class QSOFitNew:
             # print cen,sig,area
             left = min(cen-3*sig)
             right = max(cen+3*sig)
-            disp = 1.e-4*np.log(10.)
-            npix = int((right-left)/disp)
-            
+            if self.wave_scale == 'log':
+                disp = 1.e-4*np.log(10.)
+                npix = max(int((right - left) / disp), 50)
+            else:
+                # target ~2000 samples across 6 sigma span, min step 0.01 A
+                npix = max(int(2000), 50)
             xx = np.linspace(left, right, npix)
             yy = self.Manygauss(xx, pp)
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
-            contiflux = self.conti_fit.params[6]*(np.exp(xx)/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
-                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
+            lamxx = self._axis_to_lambda(xx)
+            contiflux = self.conti_fit.params[6]*(lamxx/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
+                lamxx, self.conti_fit.params[11:])+self.Balmer_conti(lamxx, self.conti_fit.params[8]) + self.Balmer_high_order(lamxx, self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
                     self.wave, 
                     self.f_conti_model)
-                contiflux = f(np.exp(xx))
+                contiflux = f(lamxx)
             
             # find the line peak location
             ypeak = yy.max()
             ypeak_ind = np.argmax(yy)
-            peak = np.exp(xx[ypeak_ind])
+            peak = self._axis_to_lambda(xx[ypeak_ind])
             
             # find the FWHM in km/s
             # take the broad line we focus and ignore other broad components such as [OIII], HeII
@@ -2168,11 +2253,10 @@ class QSOFitNew:
                 spline = interpolate.UnivariateSpline(xx, yy-np.max(yy)/2, s=0)
             if len(spline.roots()) > 0:
                 fwhm_left, fwhm_right = spline.roots().min(), spline.roots().max()
-                fwhm = abs(np.exp(fwhm_left)-np.exp(fwhm_right))/compcenter*c
-                
-                # calculate the line sigma and EW in normal wavelength
+                fwhm = abs(self._axis_to_lambda(fwhm_left)-self._axis_to_lambda(fwhm_right))/compcenter*c
+                # calculate in wavelength space
                 line_flux = self.Manygauss(xx, pp)
-                line_wave = np.exp(xx)
+                line_wave = lamxx
                 lambda0 = integrate.trapezoid(line_flux, line_wave)  # calculate the total broad line flux
                 lambda1 = integrate.trapezoid(line_flux*line_wave, line_wave)
                 lambda2 = integrate.trapezoid(line_flux*line_wave*line_wave, line_wave)
@@ -2214,25 +2298,28 @@ class QSOFitNew:
             # print cen,sig,area
             left = min(cen-3*sig)
             right = max(cen+3*sig)
-            disp = 1.e-4*np.log(10.)
-            npix = int((right-left)/disp)
-            
+            if self.wave_scale == 'log':
+                disp = 1.e-4*np.log(10.)
+                npix = max(int((right - left) / disp), 50)
+            else:
+                npix = max(int(2000), 50)
             xx = np.linspace(left, right, npix)
             yy = self.Manygauss(xx, pp)
         
             # here I directly use the continuum model to avoid the inf bug of EW when the spectrum range passed in is too short
-            contiflux = self.conti_fit.params[6]*(np.exp(xx)/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
-                np.exp(xx), self.conti_fit.params[11:])+self.Balmer_conti(np.exp(xx), self.conti_fit.params[8]) + self.Balmer_high_order(np.exp(xx), self.conti_fit.params[9:11])            
+            lamxx = self._axis_to_lambda(xx)
+            contiflux = self.conti_fit.params[6]*(lamxx/self.pl_pivot)**self.conti_fit.params[7]+self.F_poly_conti(
+                lamxx, self.conti_fit.params[11:])+self.Balmer_conti(lamxx, self.conti_fit.params[8]) + self.Balmer_high_order(lamxx, self.conti_fit.params[9:11])            
             if self.broken_pl == True:
                 f = interpolate.InterpolatedUnivariateSpline(
                     self.wave, 
                     self.f_conti_model)
-                contiflux = f(np.exp(xx))
+                contiflux = f(lamxx)
             
             # find the line peak location
             ypeak = yy.max()
             ypeak_ind = np.argmax(yy)
-            peak = np.exp(xx[ypeak_ind])
+            peak = self._axis_to_lambda(xx[ypeak_ind])
             
             # find the FWHM in km/s
             # take the broad line we focus and ignore other broad components such as [OIII], HeII
@@ -2245,11 +2332,10 @@ class QSOFitNew:
                 spline = interpolate.UnivariateSpline(xx, yy-np.max(yy)/2, s=0)
             if len(spline.roots()) > 0:
                 fwhm_left, fwhm_right = spline.roots().min(), spline.roots().max()
-                fwhm = abs(np.exp(fwhm_left)-np.exp(fwhm_right))/compcenter*c
-                
-                # calculate the line sigma and EW in normal wavelength
+                fwhm = abs(self._axis_to_lambda(fwhm_left)-self._axis_to_lambda(fwhm_right))/compcenter*c
+                # calculate in wavelength space
                 line_flux = self.Manygauss(xx, pp)
-                line_wave = np.exp(xx)
+                line_wave = lamxx
                 lambda0 = integrate.trapezoid(line_flux, line_wave)  # calculate the total broad line flux
                 lambda1 = integrate.trapezoid(line_flux*line_wave, line_wave)
                 lambda2 = integrate.trapezoid(line_flux*line_wave*line_wave, line_wave)
@@ -2642,19 +2728,23 @@ class QSOFitNew:
     def _do_line_kmpfit(self, linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit):
         """The key function to do the line fit with kmpfit"""
         line_fit = kmpfit.Fitter(self._residuals_line, data=(
-            np.log(self.wave[ind_n]), line_flux[ind_n], self.err[ind_n]))  # fitting wavelength in ln space
+            self._x_axis(self.wave[ind_n]), line_flux[ind_n], self.err[ind_n]))
         line_fit_ini = np.array([])
         line_fit_par = np.array([])
         for n in range(nline_fit):
             for nn in range(ngauss_fit[n]):
+                lam_rest = float(linelist['lambda'][ind_line][n])
+                inisig = float(linelist['inisig'][ind_line][n])
+                minsig = float(linelist['minsig'][ind_line][n])
+                maxsig = float(linelist['maxsig'][ind_line][n])
+                voff = float(linelist['voff'][ind_line][n])
+                center, lambda_low, lambda_up = self._center_param_and_bounds(lam_rest, voff)
+                sig0 = self._sigma_axis_units(inisig, lam_rest)
+                sig_low = self._sigma_axis_units(minsig, lam_rest)
+                sig_up = self._sigma_axis_units(maxsig, lam_rest)
                 # set up initial parameter guess
-                line_fit_ini0 = [0., np.log(linelist['lambda'][ind_line][n]), linelist['inisig'][ind_line][n]]
+                line_fit_ini0 = [0., center, sig0]
                 line_fit_ini = np.concatenate([line_fit_ini, line_fit_ini0])
-                # set up parameter limits
-                lambda_low = np.log(linelist['lambda'][ind_line][n])-linelist['voff'][ind_line][n]
-                lambda_up = np.log(linelist['lambda'][ind_line][n])+linelist['voff'][ind_line][n]
-                sig_low = linelist['minsig'][ind_line][n]
-                sig_up = linelist['maxsig'][ind_line][n]
                 line_fit_par0 = [{'limits': (0., 10.**10)}, {'limits': (lambda_low, lambda_up)},
                                  {'limits': (sig_low, sig_up)}]
                 line_fit_par = np.concatenate([line_fit_par, line_fit_par0])
@@ -2780,28 +2870,7 @@ class QSOFitNew:
         xval, yval, weight = data
         
         # ------tie parameter------------
-        if self.tie_lambda == True:
-            if len(self.ind_tie_vindex1) > 1:
-                for xx in range(len(self.ind_tie_vindex1)-1):
-                    pp[int(self.ind_tie_vindex1[xx+1])] = pp[int(self.ind_tie_vindex1[0])]+self.delta_lambda1[xx]
-            
-            if len(self.ind_tie_vindex2) > 1:
-                for xx in range(len(self.ind_tie_vindex2)-1):
-                    pp[int(self.ind_tie_vindex2[xx+1])] = pp[int(self.ind_tie_vindex2[0])]+self.delta_lambda2[xx]
-        
-        if self.tie_width == True:
-            if len(self.ind_tie_windex1) > 1:
-                for xx in range(len(self.ind_tie_windex1)-1):
-                    pp[int(self.ind_tie_windex1[xx+1])] = pp[int(self.ind_tie_windex1[0])]
-            
-            if len(self.ind_tie_windex2) > 1:
-                for xx in range(len(self.ind_tie_windex2)-1):
-                    pp[int(self.ind_tie_windex2[xx+1])] = pp[int(self.ind_tie_windex2[0])]
-        
-        if len(self.ind_tie_findex1) > 0 and self.tie_flux_1 == True:
-            pp[int(self.ind_tie_findex1[1])] = pp[int(self.ind_tie_findex1[0])]*self.fvalue_factor_1
-        if len(self.ind_tie_findex2) > 0 and self.tie_flux_2 == True:
-            pp[int(self.ind_tie_findex2[1])] = pp[int(self.ind_tie_findex2[0])]*self.fvalue_factor_2
+        pp = self._apply_ties_inplace(pp)
         # ---------------------------------
         
         # restore parameters

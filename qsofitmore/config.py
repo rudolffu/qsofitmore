@@ -26,6 +26,19 @@ class MigrationConfig:
         self.use_lmfit_lines = os.environ.get('QSOFITMORE_USE_LMFIT_LINES', 'false').lower() == 'true'
         self.use_lmfit_mc = os.environ.get('QSOFITMORE_USE_LMFIT_MC', 'false').lower() == 'true'
         
+        # Wavelength axis and velocity-param units
+        # wave_scale: 'log' (default, legacy) or 'linear'
+        self.wave_scale = os.environ.get('QSOFITMORE_WAVE_SCALE', 'log').strip().lower()
+        if self.wave_scale not in ('log', 'linear'):
+            self.wave_scale = 'log'
+        # velocity_units: how to interpret inisig/minsig/maxsig/voff in line tables
+        # 'lnlambda' (default, legacy) or 'km/s'
+        self.velocity_units = os.environ.get('QSOFITMORE_VELOCITY_UNITS', 'lnlambda').strip().lower()
+        if self.velocity_units in ('kms', 'km/s', 'kmps'):
+            self.velocity_units = 'km/s'
+        elif self.velocity_units != 'lnlambda':
+            self.velocity_units = 'lnlambda'
+        
         # Testing and validation flags
         self.validate_against_kmpfit = os.environ.get('QSOFITMORE_VALIDATE_KMPFIT', 'true').lower() == 'true'
         self.benchmark_performance = os.environ.get('QSOFITMORE_BENCHMARK', 'false').lower() == 'true'
@@ -76,7 +89,9 @@ class MigrationConfig:
             'line_fitting': self.use_lmfit_lines,
             'monte_carlo': self.use_lmfit_mc,
             'validation_enabled': self.validate_against_kmpfit,
-            'benchmarking': self.benchmark_performance
+            'benchmarking': self.benchmark_performance,
+            'wave_scale': self.wave_scale,
+            'velocity_units': self.velocity_units,
         }
 
 
