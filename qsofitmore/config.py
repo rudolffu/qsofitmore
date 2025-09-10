@@ -38,6 +38,11 @@ class MigrationConfig:
             self.velocity_units = 'km/s'
         elif self.velocity_units != 'lnlambda':
             self.velocity_units = 'lnlambda'
+        # Max width for narrow components, in km/s (default 1200)
+        try:
+            self.narrow_max_kms = float(os.environ.get('QSOFITMORE_NARROW_MAX_KMS', '1200'))
+        except Exception:
+            self.narrow_max_kms = 1200.0
         
         # Testing and validation flags
         self.validate_against_kmpfit = os.environ.get('QSOFITMORE_VALIDATE_KMPFIT', 'true').lower() == 'true'
@@ -92,6 +97,7 @@ class MigrationConfig:
             'benchmarking': self.benchmark_performance,
             'wave_scale': self.wave_scale,
             'velocity_units': self.velocity_units,
+            'narrow_max_kms': self.narrow_max_kms,
         }
 
 

@@ -94,6 +94,7 @@ class QSOFitNew:
         self.wave_scale = migration_config.wave_scale  # 'log' or 'linear'
         self.velocity_units = migration_config.velocity_units  # 'lnlambda' or 'km/s'
         self._c_kms = 299792.458
+        self.narrow_max_kms = migration_config.narrow_max_kms
 
     # -------- Axis/units helpers (for gradual migration) --------
     def _x_axis(self, wave):
@@ -121,6 +122,13 @@ class QSOFitNew:
                 return (float(sigma_value) / self._c_kms) * float(lambda_rest)
             else:
                 return float(sigma_value) * float(lambda_rest)
+
+    def _kms_to_sigma_axis(self, kms: float, lambda_rest: float) -> float:
+        """Convert a sigma in km/s to model-axis sigma (ln or linear)."""
+        if self.wave_scale == 'log':
+            return float(kms) / self._c_kms
+        else:
+            return (float(kms) / self._c_kms) * float(lambda_rest)
 
     def _center_param_and_bounds(self, lambda_rest, voff_value):
         """Compute center parameter value and bounds for the selected axis and units.
@@ -1109,6 +1117,11 @@ class QSOFitNew:
                 sig0 = self._sigma_axis_units(inisig, lam_rest)
                 sig_low = self._sigma_axis_units(minsig, lam_rest)
                 sig_up = self._sigma_axis_units(maxsig, lam_rest)
+                # Enforce narrow-line width cap (in km/s) for non-broad components
+                line_name = str(linelist['linename'][ind_line][n])
+                if 'br' not in line_name:
+                    cap = self._kms_to_sigma_axis(self.narrow_max_kms, lam_rest)
+                    sig_up = min(sig_up, cap)
                 line_fit_ini0 = [0.0, center, sig0]
                 line_fit_ini = np.concatenate([line_fit_ini, line_fit_ini0])
                 line_fit_par0 = [
@@ -1391,14 +1404,14 @@ class QSOFitNew:
                 # if self.CalFWHM(temp_gauss_result[(2+p*3)*mc_flag]) < 1200.:
                 params_p = temp_gauss_result[p*3*mc_flag:(p+1)*3*mc_flag:mc_flag]
                 line_single = self.Onegauss(self._x_axis(wave), params_p)
-                # classify by velocity sigma threshold (~0.0017*c)
+                # classify by velocity sigma threshold (default narrow<=1200 km/s)
                 sigma_axis = params_p[2]
                 center_axis = params_p[1]
                 if self.wave_scale == 'log':
                     sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
                 else:
                     sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
-                if sigma_kms <= 0.0017 * self._c_kms:
+                if sigma_kms <= float(self.narrow_max_kms):
                     color = 'g'
                     na_lines_total += line_single
                 else:
@@ -2030,7 +2043,7 @@ class QSOFitNew:
                             sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
                         else:
                             sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
-                        if sigma_kms > 0.0017 * self._c_kms:
+                        if sigma_kms > float(self.narrow_max_kms):
                             na_tmp = self.line_prop(linecenter, params_seg, 'broad')
                         else:
                             na_tmp = self.line_prop(linecenter, params_seg, 'narrow')
@@ -2190,7 +2203,7 @@ class QSOFitNew:
             sigma_kms = (np.exp(sigmas) - 1.0) * self._c_kms
         else:
             sigma_kms = (sigmas / np.clip(centers, 1e-20, np.inf)) * self._c_kms
-        thresh = 0.0017 * self._c_kms
+        thresh = float(self.narrow_max_kms)
         if linetype == 'broad':
             mask_g = sigma_kms > thresh
         elif linetype == 'narrow':
@@ -2742,6 +2755,11 @@ class QSOFitNew:
                 sig0 = self._sigma_axis_units(inisig, lam_rest)
                 sig_low = self._sigma_axis_units(minsig, lam_rest)
                 sig_up = self._sigma_axis_units(maxsig, lam_rest)
+                # Enforce narrow-line width cap for non-broad components
+                line_name = str(linelist['linename'][ind_line][n])
+                if 'br' not in line_name:
+                    cap = self._kms_to_sigma_axis(self.narrow_max_kms, lam_rest)
+                    sig_up = min(sig_up, cap)
                 # set up initial parameter guess
                 line_fit_ini0 = [0., center, sig0]
                 line_fit_ini = np.concatenate([line_fit_ini, line_fit_ini0])
