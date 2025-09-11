@@ -11,6 +11,7 @@ A python package for fitting UV-optical QSO spectra. This package is developed b
 - Narrow line measurements in the line MC process (which enables estimating uncertainties for narrow line parameters). 
 - Dust maps and extinction laws other than SFD98 and CCM. 
 - LaTeX rendering for line names in plots. 
+- Linear wavelength fitting mode with line profile parameters in km/s (optional). Narrow-line width cap (default 1200 km/s). CSV/YAML helpers to edit and convert parameter lists.
 
 ## 1. Installation
 Dependencies:
@@ -61,33 +62,67 @@ python -m pip install .
 python -m pip install -e .
 ```
 
-### Using legacy kmpfit (optional)
+### Fitting Backends: kmpfit (default) vs lmfit
 
-By default, qsofitmore uses the lmfit-based fitting paths. The legacy kmpfit path is still available but requires the optional Kapteyn package.
+qsofitmore historically uses Kapteyn’s kmpfit as the default backend. If Kapteyn is not installed on your system, you have two choices:
 
-- Install Kapteyn (optional):
-  ```bash
-  pip install "cython<3.0" # suggested by Kapteyn maintainer
-  pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
-  # or via optional extra
-  pip install .[legacy]
-  ```
+1) Install Kapteyn (kmpfit):
+   ```bash
+   pip install "cython<3.0"  # Kapteyn requires Cython < 3
+   pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
+   # or via optional extra, if provided in your environment
+   pip install .[legacy]
+   ```
 
-- Enable legacy kmpfit at runtime (if you prefer kmpfit over lmfit):
+2) Use the lmfit backend (no Kapteyn required):
+   ```python
+   # Enable lmfit globally (recommended when Kapteyn is unavailable)
+   from qsofitmore.config import migration_config
+   migration_config.use_lmfit = True
+   ```
+   or via environment variables before importing qsofitmore:
+   ```bash
+   export QSOFITMORE_USE_LMFIT=true
+   # or more granular control
+   export QSOFITMORE_USE_LMFIT_LINES=true
+   export QSOFITMORE_USE_LMFIT_CONTINUUM=true
+   ```
+
+If you attempt to use kmpfit paths without Kapteyn installed, qsofitmore raises a clear ImportError with brief install instructions. Enabling lmfit (above) avoids the dependency entirely.
+
+CI and tox notes:
+- kmpfit-specific tox envs install Kapteyn automatically.
+- Example: `tox -e py311-kmpfit`
+
+### Linear Wavelength Mode and km/s Parameters (optional)
+
+For easier parameter limits and interpretation, you can fit emission lines on a linear wavelength axis and specify Gaussian widths/offsets in km/s.
+
+Environment flags (set before importing qsofitmore):
+```bash
+export QSOFITMORE_WAVE_SCALE=linear            # axis for line fitting (log|linear)
+export QSOFITMORE_VELOCITY_UNITS=km/s          # interpret inisig/minsig/maxsig/voff as km/s
+export QSOFITMORE_NARROW_MAX_KMS=1200          # cap for narrow components (non-*br lines)
+```
+
+Parameter editing workflow:
+- Use the CSV/YAML helpers to export, edit, and round-trip the parameter list.
+- Converters are available to transform legacy ln(lambda) values to km/s:
   ```python
-  from qsofitmore.config import migration_config
-  migration_config.use_lmfit = False  # use legacy kmpfit path
+  from qsofitmore.line_params_io import (
+      fits_to_csv, fits_to_yaml, csv_to_fits, yaml_to_fits,
+      convert_csv_lnlambda_to_kms, convert_yaml_lnlambda_to_kms,
+  )
+  # Example: convert CSV and write back to FITS
+  convert_csv_lnlambda_to_kms('qsofitmore/examples/output/qsopar.csv',
+                              'qsofitmore/examples/output/qsopar.csv')
+  csv_to_fits('qsofitmore/examples/output/qsopar.csv',
+              'qsofitmore/examples/output/qsopar.fits')
   ```
 
-- If Kapteyn is not installed and you try to use kmpfit, qsofitmore will print a friendly warning on import and raise a clear ImportError when a kmpfit path is invoked. To avoid this, either install Kapteyn (above) or enable lmfit:
-  ```python
-  from qsofitmore.config import migration_config
-  migration_config.use_lmfit = True
-  ```
-
-- CI and tox:
-  - kmpfit-specific tox envs install Kapteyn automatically.
-  - Example: `tox -e py311-kmpfit`
+Examples:
+- `qsofitmore/examples/1b-edit_parlist_csv_yaml.ipynb`: edit parameters via CSV/YAML and regenerate FITS.
+- `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb`: run fitting in linear-axis mode with km/s parameterization.
 
 ## 2. Tutorial
  
