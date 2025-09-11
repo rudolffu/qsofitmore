@@ -130,56 +130,47 @@ This tutorial can be run under `examples` directory of `qsofitmore`.
 
 ### 2.1 Generate line parameter file
 
-The following script of generating `qsopar.fits` is based on https://github.com/legolason/PyQSOFit/blob/master/example/example.ipynb
-
+In this example, we read a line parameter file in csv format and convert it to fits format. The csv file can be edited manually. The output fits file (`qsopar.fits`) will be used in the fitting process. You can also use the provided `qsofitmore/examples/output/qsopar.fits` file directly without running this step.
 
 ```python
 import numpy as np
 from astropy.io import fits
 from astropy.table import Table
+import pandas as pd
+from pathlib import Path
 path='./output/'
+Path(path).mkdir(exist_ok=True)
 
-newdata = np.rec.array([(6564.61,'Ha',6400.,6800.,'Ha_br',3,5e-3,0.003,0.01,0.005,0,0,0,0.05),\
-                        (6564.61,'Ha',6400.,6800.,'Ha_na',1,1e-3,5e-4,0.0017,0.01,1,1,0,0.002),\
-                        (6549.85,'Ha',6400.,6800.,'NII6549',1,1e-3,2.3e-4,0.0017,5e-3,1,1,1,0.001),\
-                        (6585.28,'Ha',6400.,6800.,'NII6585',1,1e-3,2.3e-4,0.0017,5e-3,1,1,1,0.003),\
-                        (6718.29,'Ha',6400.,6800.,'SII6718',1,1e-3,2.3e-4,0.0017,5e-3,1,1,2,0.001),\
-                        (6732.67,'Ha',6400.,6800.,'SII6732',1,1e-3,2.3e-4,0.0017,5e-3,1,1,2,0.001),\
-                        (4862.68,'Hb',4640.,5100.,'Hb_br',3,5e-3,0.003,0.01,0.003,0,0,0,0.01),\
-                        (4862.68,'Hb',4640.,5100.,'Hb_na',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.002),\
-                        (4960.30,'Hb',4640.,5100.,'OIII4959',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.002),\
-                        (5008.24,'Hb',4640.,5100.,'OIII5007',1,1e-3,2.3e-4,0.0017,0.01,1,1,0,0.004),\
-                        (4955.30,'Hb',4640.,5100.,'OIII4959w',1,1e-3,2.3e-4,0.0017,0.01,2,2,0,0.001),\
-                        (4995.24,'Hb',4640.,5100.,'OIII5007w',1,1e-3,2.3e-4,0.0017,0.01,2,2,0,0.002),\
-                        (4341.68,'Hg',4250.,4440.,'Hg_br',1,5e-3,0.004,0.025,0.0017,0,0,0,0.05),\
-                        (4341.68,'Hg',4250.,4440.,'Hg_na',1,1e-3,2.3e-4,0.0017,5e-3,1,1,0,0.001),\
-                        (3728.48,'OII',3650.,3800.,'OII3728',1,1e-3,3.333e-4,0.0017,0.01,1,1,0,0.001),\
-                        (3426.84,'NeV',3380.,3480.,'NeV3426',1,1e-3,3.333e-4,0.0017,0.005,0,0,0,0.001),\
-                        (2798.75,'MgII',2700.,2900.,'MgII_br',2,5e-3,0.004,0.015,0.0017,0,0,0,0.05),\
-                        (2798.75,'MgII',2700.,2900.,'MgII_na',1,1e-3,2.3e-4,0.0017,0.01,0,0,0,0.002),\
-                        (1908.73,'CIII',1700.,1970.,'CIII_br',2,5e-3,0.004,0.015,0.015,99,0,0,0.01),\
-                        (1549.06,'CIV',1500.,1700.,'CIV_br',3,5e-3,0.004,0.015,0.015,0,0,0,0.05),\
-                        ],\
-                     formats='float32,a20,float32,float32,a20,float32,float32,float32,float32,\
-                     float32,float32,float32,float32,float32',\
-                     names='lambda,compname,minwav,maxwav,linename,ngauss,inisig,minsig,maxsig,voff,vindex,windex,findex,fvalue')
-#------header-----------------
-hdr = fits.Header()
-hdr['lambda'] = 'Vacuum Wavelength in Ang'
-hdr['minwav'] = 'Lower complex fitting wavelength range'
-hdr['maxwav'] = 'Upper complex fitting wavelength range'
-hdr['ngauss'] = 'Number of Gaussians for the line'
-hdr['inisig'] = 'Initial guess of linesigma [in lnlambda]'
-hdr['minsig'] = 'Lower range of line sigma [lnlambda]'  
-hdr['maxsig'] = 'Upper range of line sigma [lnlambda]'
-hdr['voff  '] = 'Limits on velocity offset from the central wavelength [lnlambda]'
-hdr['vindex'] = 'Entries w/ same NONZERO vindex constrained to have same velocity'
-hdr['windex'] = 'Entries w/ same NONZERO windex constrained to have same width'
-hdr['findex'] = 'Entries w/ same NONZERO findex have constrained flux ratios'
-hdr['fvalue'] = 'Relative scale factor for entries w/ same findex'
-#------create fits table-------
-hdu = fits.BinTableHDU(data=newdata,header=hdr,name='data')
-hdu.writeto(path+'qsopar.fits',overwrite=True)
+df_line = pd.read_csv("qsofitmore/examples/output/qsopar.csv")
+
+print(df_line)
+
+     lambda compname  minwav  maxwav   linename  ngauss  inisig      minsig      maxsig    voff  vindex  windex  findex  fvalue
+0   6564.61       Ha  6400.0  6800.0      Ha_br       3    1500   899.37737  2000.00000  1000.0     0.0     0.0     0.0   0.050
+1   6564.61       Ha  6400.0  6800.0      Ha_na       1     300   149.89623   509.60000  2000.0     1.0     1.0     0.0   0.002
+2   6549.85       Ha  6400.0  6800.0    NII6549       1     300    68.95227   509.60000  1500.0     1.0     1.0     1.0   0.001
+3   6585.28       Ha  6400.0  6800.0    NII6585       1     300    68.95227   509.60000  1500.0     1.0     1.0     1.0   0.003
+4   6718.29       Ha  6400.0  6800.0    SII6718       1     300    68.95227   509.60000  1500.0     1.0     1.0     2.0   0.001
+5   6732.67       Ha  6400.0  6800.0    SII6732       1     300    68.95227   509.60000  1500.0     1.0     1.0     2.0   0.001
+6   4862.68       Hb  4640.0  5100.0      Hb_br       3    1500   899.37737  2000.00000   500.0     0.0     0.0     0.0   0.010
+7   4862.68       Hb  4640.0  5100.0      Hb_na       1     300    68.95227   509.60000  2000.0     1.0     1.0     0.0   0.002
+8   4960.30       Hb  4640.0  5100.0   OIII4959       1     300    68.95227   509.60000  2000.0     1.0     1.0     0.0   0.002
+9   5008.24       Hb  4640.0  5100.0   OIII5007       1     300    68.95227   509.60000  2000.0     1.0     1.0     0.0   0.004
+10  4955.30       Hb  4640.0  5100.0  OIII4959w       1     300    68.95227   509.60000  2000.0     2.0     2.0     0.0   0.001
+11  4995.24       Hb  4640.0  5100.0  OIII5007w       1     300    68.95227   509.60000  2000.0     2.0     2.0     0.0   0.002
+12  4341.68       Hg  4250.0  4440.0      Hg_br       1    1500  1199.16985  7494.81146   509.6     0.0     0.0     0.0   0.050
+13  4341.68       Hg  4250.0  4440.0      Hg_na       1     300    68.95227   509.60000  1500.0     1.0     1.0     0.0   0.001
+14  3728.48      OII  3650.0  3800.0    OII3728       1     300    99.92083   509.60000  2000.0     1.0     1.0     0.0   0.001
+15  3426.84      NeV  3380.0  3480.0    NeV3426       1     300    99.92083   509.60000  1500.0     0.0     0.0     0.0   0.001
+16  2798.75     MgII  2700.0  2900.0    MgII_br       2    1500  1199.16985  4500.00000   509.6     0.0     0.0     0.0   0.050
+17  2798.75     MgII  2700.0  2900.0    MgII_na       1     300    68.95227   509.60000  2000.0     0.0     0.0     0.0   0.002
+18  1908.73     CIII  1700.0  1970.0    CIII_br       2    1500  1199.16985  4500.00000  4500.0    99.0     0.0     0.0   0.010
+19  1549.06      CIV  1500.0  1700.0     CIV_br       3    1500  1199.16985  4500.00000  4500.0     0.0     0.0     0.0   0.050
+
+# convert to fits
+tb = Table.from_pandas(df_line)
+tb.write(path+'qsopar.fits', overwrite=True)
+
 ```
 
 ### 2.2 Import `QSOFitNew` class from `qsofitmore` 
