@@ -7,7 +7,7 @@ import os
 
 # Try to import qsofitmore config, skip tests if not available
 try:
-    from qsofitmore.config import migration_config
+    from qsofitmore.config import MigrationConfig, migration_config
     QSOFITMORE_AVAILABLE = True
 except ImportError:
     QSOFITMORE_AVAILABLE = False
@@ -35,6 +35,7 @@ except ImportError:
                 'benchmarking': False
             }
     migration_config = DummyConfig()
+    MigrationConfig = None
 
 
 class TestMigrationIntegration:
@@ -76,6 +77,21 @@ class TestMigrationIntegration:
         assert migration_config.atol >= 0
         assert isinstance(migration_config.rtol, float)
         assert isinstance(migration_config.atol, float)
+
+    def test_default_backend_is_lmfit(self, monkeypatch):
+        """lmfit should be the default backend when no env overrides are set"""
+        if not QSOFITMORE_AVAILABLE or MigrationConfig is None:
+            pytest.skip("qsofitmore import unavailable")
+        for env_var in (
+            'QSOFITMORE_USE_LMFIT',
+            'QSOFITMORE_USE_LMFIT_CONTINUUM',
+            'QSOFITMORE_USE_LMFIT_LINES',
+        ):
+            monkeypatch.delenv(env_var, raising=False)
+        cfg = MigrationConfig()
+        assert cfg.use_lmfit
+        assert cfg.use_lmfit_continuum
+        assert cfg.use_lmfit_lines
 
 
 class TestFullWorkflow:

@@ -327,7 +327,7 @@ Prefer using `pytest-benchmark` (already configured) for comparable measurements
 - [ ] Implement lmfit continuum path guarded by `use_lmfit_continuum` (see `fitmodule.py:339` et al.)
 - [ ] Implement lmfit line fitting path guarded by `use_lmfit_lines` with parameter ties
 - [ ] Implement lmfit MC errors guarded by `use_lmfit_mc`
-- [ ] Keep kmpfit behavior as default until parity is met
+- [x] Switch default backend to lmfit; keep kmpfit available via flags/extras
 - [ ] Add residual wrappers for shared logic; keep log-wavelength handling identical
 
 ### 5.3 Validation & Cleanup
@@ -342,6 +342,7 @@ Prefer using `pytest-benchmark` (already configured) for comparable measurements
 - Always include error columns in outputs; when using lmfit and `MC=False`, use lmfit stderr-based errors for parameters and analytic errors for broad line metrics.
 - Tightened bounds for Fe and Balmer continuum/high-order norms (≤ 1e3) for stability; left PL norm wide.
 - Fixed broken power-law model to be continuous at 4661 Å and aligned with input wavelengths.
+- lmfit is now the default backend; set `QSOFITMORE_USE_LMFIT=false` (or `migration_config.use_lmfit=False`) to run kmpfit when Kapteyn is installed.
 - Global flag `use_lmfit` now cascades at runtime to enable both components.
 
 ## Open To‑Dos
