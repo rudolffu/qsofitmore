@@ -198,6 +198,22 @@ The output path (`path`) should contain a line list file (`qsopar_log.fits` gene
 path = "./output/"
 ```
 
+#### Linear wavelength quickstart
+
+The snippet above keeps the default log-wavelength configuration. If you prefer to operate on linear wavelengths with km/s parameter limits:
+
+1. Set the environment variables **before** importing `qsofitmore` so the configuration picks up the new axis/units.
+   ```python
+   import os
+   os.environ['QSOFITMORE_WAVE_SCALE'] = 'linear'
+   os.environ['QSOFITMORE_VELOCITY_UNITS'] = 'km/s'
+   os.environ['QSOFITMORE_NARROW_MAX_KMS'] = '1200'
+   from qsofitmore import QSOFitNew
+   ```
+2. Regenerate the linear parameter table (see `1b-generate_linear_parlist.ipynb` or run `convert_csv_lnlambda_to_kms` + `csv_to_fits`) so `./output/qsopar_linear.fits` matches your CSV/YAML edits.
+3. Run the same fitting workflow, but point to `qsopar_linear.fits` (or simply set `path` as shown above—`QSOFitNew` will now load the linear filename automatically). The full walkthrough lives in `2b-fit_qso_spectrum_linear.ipynb`.
+
+
 ### 2.3 Initialise an instance of `QSOFitNew` from a custom spectrum 
 
 #### a) From numpy-array like data 
