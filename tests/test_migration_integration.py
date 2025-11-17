@@ -108,7 +108,7 @@ class TestFullWorkflow:
         hdr = fits.Header()
         hdr['lambda'] = 'Vacuum Wavelength in Ang'
         hdu = fits.BinTableHDU(data=sample_linelist, header=hdr, name='data')
-        linelist_path = os.path.join(temp_output_dir, 'qsopar.fits')
+        linelist_path = os.path.join(temp_output_dir, 'qsopar_log.fits')
         hdu.writeto(linelist_path, overwrite=True)
         
         # This would test the full fitting workflow
