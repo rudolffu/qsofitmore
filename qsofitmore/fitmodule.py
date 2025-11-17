@@ -1294,8 +1294,12 @@ class QSOFitNew:
             self.err = self.Smooth(self.err, nsmooth)
         if (and_or_mask == True) and (self.and_mask is not None or self.or_mask is not None):
             self._MaskSdssAndOr(self.lam, self.flux, self.err, self.and_mask, self.or_mask)
-        if reject_badpix == True:
-            self._RejectBadPix(self.lam, self.flux, self.err)
+        if reject_badpix:
+            warnings.warn(
+                "'reject_badpix' is deprecated; rely on SDSS masks or 'wave_mask' for pixel rejection.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         if wave_range is not None:
             self._WaveTrim(self.lam, self.flux, self.err, self.z)
         if wave_mask is not None:
@@ -2626,33 +2630,6 @@ class QSOFitNew:
         ind_and_or = np.where((and_mask == 0) & (or_mask == 0), True, False)
         del self.lam, self.flux, self.err
         self.lam, self.flux, self.err = lam[ind_and_or], flux[ind_and_or], err[ind_and_or]
-    
-    def _RejectBadPix(self, lam, flux, err):
-        """
-        Reject 10 most possiable outliers, input wavelength, flux and error. Return a different size wavelength,
-        flux, and error.
-        """
-        # -----remove bad pixels, but not for high SN spectrum------------
-        # Alternative outlier detection using modified z-score method
-        median_flux = np.nanmedian(flux)
-        mad = np.nanmedian(np.abs(flux - median_flux))
-        modified_z_scores = 0.6745 * (flux - median_flux) / mad
-        outlier_threshold = 3.5
-        outlier_indices = np.where(np.abs(modified_z_scores) > outlier_threshold)[0]
-        
-        # Limit to 10 most extreme outliers (similar to original GESD behavior)
-        if len(outlier_indices) > 10:
-            outlier_scores = np.abs(modified_z_scores[outlier_indices])
-            top_outliers = np.argsort(outlier_scores)[-10:]
-            outlier_indices = outlier_indices[top_outliers]
-        
-        ind_bad = ([], outlier_indices)
-        wv = np.asarray([i for j, i in enumerate(lam) if j not in ind_bad[1]], dtype=np.float64)
-        fx = np.asarray([i for j, i in enumerate(flux) if j not in ind_bad[1]], dtype=np.float64)
-        er = np.asarray([i for j, i in enumerate(err) if j not in ind_bad[1]], dtype=np.float64)
-        del self.lam, self.flux, self.err
-        self.lam, self.flux, self.err = wv, fx, er
-        return self.lam, self.flux, self.err
     
     def _WaveTrim(self, lam, flux, err, z):
         """
