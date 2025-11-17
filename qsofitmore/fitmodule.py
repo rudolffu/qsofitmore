@@ -100,6 +100,14 @@ class QSOFitNew:
         self._c_kms = 299792.458
         self.narrow_max_kms = migration_config.narrow_max_kms
 
+    def _linelist_path(self) -> str:
+        """Return the on-disk path for the active wavelength-scale line table."""
+        base = 'qsopar_linear' if self.wave_scale == 'linear' else 'qsopar_log'
+        filename = f"{base}.fits"
+        if not self.path:
+            return filename
+        return os.path.join(self.path, filename)
+
     # -------- Axis/units helpers (for gradual migration) --------
     def _x_axis(self, wave):
         """Return model x-axis from wavelength array according to configured scale."""
@@ -1623,7 +1631,7 @@ class QSOFitNew:
                                            (wave > 1150.) & (wave < 1290.))) & (line_flux < -err)), True, False)
         
         # read line parameter
-        linepara = fits.open(self.path+'qsopar.fits')
+        linepara = fits.open(self._linelist_path())
         linelist = linepara[1].data
         mask_compname = self.mask_compname
         if mask_compname is not None:

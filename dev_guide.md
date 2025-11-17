@@ -129,14 +129,20 @@ from qsofitmore.line_params_io import (
 )
 
 # Convert legacy tables
-convert_csv_lnlambda_to_kms('examples/output/qsopar.csv', 'examples/output/qsopar.csv')
-convert_yaml_lnlambda_to_kms('examples/output/qsopar.yaml', 'examples/output/qsopar.yaml')
+convert_csv_lnlambda_to_kms('examples/output/qsopar_log.csv', 'examples/output/qsopar_linear.csv')
+convert_yaml_lnlambda_to_kms('examples/output/qsopar_log.yaml', 'examples/output/qsopar_linear.yaml')
 
 # Write FITS; header will record VELUNIT=km/s when env is set
-csv_to_fits('examples/output/qsopar.csv', 'examples/output/qsopar.fits')
+csv_to_fits('examples/output/qsopar_linear.csv', 'examples/output/qsopar_linear.fits')
+
+Interactive notebooks mirror the same workflow:
+- `examples/1a-make_parlist_log.ipynb` builds the baseline log table (and honors `QSOFITMORE_WAVE_SCALE` if you need the linear variant).
+- `examples/1b-generate_linear_parlist.ipynb` rebuilds `qsopar_linear.fits` from the CSV/YAML exports.
+- `examples/1c-edit_parlist_csv_yaml.ipynb` round-trips parameters through CSV/YAML editors.
+- `examples/2a-fit_qso_spectrum_log.ipynb` and `examples/2b-fit_qso_spectrum_linear.ipynb` show complete log vs. linear fitting sessions.
 ```
 
-See `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb` for an end-to-end notebook using linear axis and km/s widths.
+See `qsofitmore/examples/2a-fit_qso_spectrum_log.ipynb` for the baseline log-axis walkthrough and `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb` for the linear/km-s variant.
 
 Examples:
 ```bash

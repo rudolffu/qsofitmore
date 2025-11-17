@@ -118,23 +118,26 @@ Parameter editing workflow:
       convert_csv_lnlambda_to_kms, convert_yaml_lnlambda_to_kms,
   )
   # Example: convert CSV and write back to FITS
-  convert_csv_lnlambda_to_kms('qsofitmore/examples/output/qsopar.csv',
-                              'qsofitmore/examples/output/qsopar.csv')
-  csv_to_fits('qsofitmore/examples/output/qsopar.csv',
-              'qsofitmore/examples/output/qsopar.fits')
+  convert_csv_lnlambda_to_kms('qsofitmore/examples/output/qsopar_log.csv',
+                              'qsofitmore/examples/output/qsopar_linear.csv')
+  csv_to_fits('qsofitmore/examples/output/qsopar_linear.csv',
+              'qsofitmore/examples/output/qsopar_linear.fits')
   ```
 
 Examples:
-- `qsofitmore/examples/1b-edit_parlist_csv_yaml.ipynb`: edit parameters via CSV/YAML and regenerate FITS.
+- `qsofitmore/examples/1a-make_parlist_log.ipynb`: generate the baseline log-wavelength parameter table (`qsopar_log.fits`; respects `QSOFITMORE_WAVE_SCALE` if you need the linear copy).
+- `qsofitmore/examples/1b-generate_linear_parlist.ipynb`: take the editable `qsopar_linear.csv`/`.yaml` files and rebuild `qsopar_linear.fits`.
+- `qsofitmore/examples/1c-edit_parlist_csv_yaml.ipynb`: export/import parameters via CSV/YAML for either log or linear workflows.
+- `qsofitmore/examples/2a-fit_qso_spectrum_log.ipynb`: run the standard log-wavelength fitting workflow.
 - `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb`: run fitting in linear-axis mode with km/s parameterization.
 
 ## 2. Tutorial
  
-This tutorial can be run under `examples` directory of `qsofitmore`. 
+This tutorial can be run under `examples` directory of `qsofitmore`. The notebook `2a-fit_qso_spectrum_log.ipynb` walks through the log-wavelength workflow described below, while `2b-fit_qso_spectrum_linear.ipynb` mirrors the same steps for the linear/km-s mode.
 
 ### 2.1 Generate line parameter file
 
-In this example, we read a line parameter file in csv format and convert it to fits format. The csv file can be edited manually. The output fits file (`qsopar.fits`) will be used in the fitting process. You can also use the provided `qsofitmore/examples/output/qsopar.fits` file directly without running this step.
+In this example (mirroring `1a-make_parlist_log.ipynb`), we read a line parameter file in csv format and convert it to fits format. The csv file can be edited manually. The output fits file (`qsopar_log.fits`) will be used in the fitting process. You can also use the provided `qsofitmore/examples/output/qsopar_log.fits` file directly without running this step. For a linear-axis copy, see `1b-generate_linear_parlist.ipynb` which rebuilds `qsopar_linear.fits` from the CSV/YAML exports.
 
 ```python
 import numpy as np
@@ -145,7 +148,7 @@ from pathlib import Path
 path='./output/'
 Path(path).mkdir(exist_ok=True)
 
-df_line = pd.read_csv("qsofitmore/examples/output/qsopar.csv")
+df_line = pd.read_csv("qsofitmore/examples/output/qsopar_log.csv")
 
 print(df_line)
 
@@ -173,7 +176,7 @@ print(df_line)
 
 # convert to fits
 tb = Table.from_pandas(df_line)
-tb.write(path+'qsopar.fits', overwrite=True)
+tb.write(path+'qsopar_log.fits', overwrite=True)
 
 ```
 
@@ -188,7 +191,7 @@ import pandas as pd
 from astropy.table import Table
 ```
 
-The output path (`path`) should contain a line list file (`qsopar.fits` generated in `1-make_parlist.ipynb`). The output files (including fits table and plots) are stored in `path`. 
+The output path (`path`) should contain a line list file (`qsopar_log.fits` generated in `1a-make_parlist_log.ipynb`). Linear-axis runs instead expect `qsopar_linear.fits` from `1b-generate_linear_parlist.ipynb`. The output files (including fits table and plots) are stored in `path`. 
 
 
 ```python
