@@ -12,6 +12,7 @@ try:
     from kapteyn import kmpfit as _kmpfit
 except Exception:
     _kmpfit = None
+kmpfit = _kmpfit
 from astropy.io import fits
 from astropy.cosmology import FlatLambdaCDM
 from astropy.table import Table
@@ -36,6 +37,9 @@ __all__ = ['QSOFitNew']
 
 getnonzeroarr = lambda x: x[x != 0]
 sciplotstyle()
+
+_BROAD_SIGMA_THRESHOLD_LN = 0.0017
+_BROAD_SIGMA_THRESHOLD_KMS = (np.exp(_BROAD_SIGMA_THRESHOLD_LN) - 1.0) * 299792.458
 
 class QSOFitNew:
     def __init__(self, lam, flux, err, z, ra=0, dec=0, name=None, plateid=None, mjd=None, fiberid=None, 
@@ -152,6 +156,15 @@ class QSOFitNew:
             lower = lam0 * np.exp(-dv_c)
             upper = lam0 * np.exp(+dv_c)
             return center, lower, upper
+    
+    def _sigma_axis_to_kms(self, sigma_axis, center_axis):
+        """Convert model-axis sigma + center to km/s."""
+        sigma_axis = np.asarray(sigma_axis, dtype=float)
+        center_axis = np.asarray(center_axis, dtype=float)
+        if self.wave_scale == 'log':
+            return (np.exp(sigma_axis) - 1.0) * self._c_kms
+        denom = np.clip(center_axis, 1e-20, np.inf)
+        return (sigma_axis / denom) * self._c_kms
 
     def _apply_ties_inplace(self, pp):
         """Apply tying for centers/widths/flux according to current axis.
@@ -1411,10 +1424,7 @@ class QSOFitNew:
                 # classify by velocity sigma threshold (default narrow<=1200 km/s)
                 sigma_axis = params_p[2]
                 center_axis = params_p[1]
-                if self.wave_scale == 'log':
-                    sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
-                else:
-                    sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
+                sigma_kms = float(self._sigma_axis_to_kms(sigma_axis, center_axis))
                 if sigma_kms <= float(self.narrow_max_kms):
                     color = 'g'
                     na_lines_total += line_single
@@ -1699,8 +1709,14 @@ class QSOFitNew:
                                     raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
                                 line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                    
+                    use_lmfit_lines = getattr(migration_config, 'use_lmfit_lines', False)
                     # calculate uncertainties (always save errors)
-                    if getattr(migration_config, 'use_lmfit_lines', False):
+                    if self.MC == True and self.n_trails > 0:
+                        all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
+                            self._x_axis(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
+                            self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
+                        self.na_all_dict.update(na_dict)
+                    elif use_lmfit_lines:
                         # lmfit: always use stderr/covariance propagation
                         try:
                             n_params = len(line_fit.params)
@@ -1781,17 +1797,11 @@ class QSOFitNew:
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
                         self.na_all_dict.update(na_dict)
                     else:
-                        if self.MC == True and self.n_trails > 0:
-                            all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
-                                self._x_axis(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
-                                self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
-                            self.na_all_dict.update(na_dict)
-                        else:
-                            # no lmfit and no MC: set zeros for stds
-                            all_para_std = np.zeros(len(line_fit.params))
-                            fwhm_std = sigma_std = ew_std = peak_std = area_std = 0.0
-                            na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
-                            self.na_all_dict.update(na_dict)
+                        # no lmfit and no MC: set zeros for stds
+                        all_para_std = np.zeros(len(line_fit.params))
+                        fwhm_std = sigma_std = ew_std = peak_std = area_std = 0.0
+                        na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
+                        self.na_all_dict.update(na_dict)
                     
                     # ----------------------get line fitting results----------------------
                     # complex parameters
@@ -1985,48 +1995,84 @@ class QSOFitNew:
     # ---------MC error for emission line parameters-------------------
     def new_line_mc(self, x, y, err, pp0, pp_limits, n_trails, compcenter, linecompname,
                     ind_line, nline_fit, linelist_fit, ngauss_fit):
-        """calculate the Monte Carlo errror of line parameters"""
+        """calculate the Monte Carlo errror of line parameters using the active backend"""
         linelist = self.linelist
-        linenames = linelist[linelist['compname']==linecompname]['linename']
+        linenames = linelist[linelist['compname'] == linecompname]['linename']
         self.linenames_mc = linenames
-        all_para_1comp = np.zeros(len(pp0)*n_trails).reshape(len(pp0), n_trails)
-        all_para_std = np.zeros(len(pp0))
-        all_fwhm = np.zeros(n_trails)
-        all_sigma = np.zeros(n_trails)
-        all_ew = np.zeros(n_trails)
-        all_peak = np.zeros(n_trails)
-        all_area = np.zeros(n_trails)
+        use_lmfit = getattr(migration_config, 'use_lmfit_lines', False)
+        if use_lmfit:
+            try:
+                from lmfit import minimize, Parameters
+            except Exception:
+                raise ImportError("lmfit is required for lmfit line MC path but is not available.")
+            n_params = len(pp0)
+
+            def make_params():
+                params = Parameters()
+                for i in range(n_params):
+                    name = f"p{i}"
+                    params.add(name, value=float(pp0[i]))
+                    if i < len(pp_limits):
+                        bounds = pp_limits[i]
+                        if isinstance(bounds, dict) and bounds.get('limits') is not None:
+                            lo, hi = bounds['limits']
+                            if lo is not None:
+                                params[name].set(min=float(lo))
+                            if hi is not None:
+                                params[name].set(max=float(hi))
+                return params
+
+            def residual_func(pars, xval, yval, weight):
+                pvec = np.array([pars[f"p{j}"].value for j in range(n_params)], dtype=float)
+                pvec = self._apply_ties_inplace(pvec)
+                self.newpp = pvec.copy()
+                return (yval - self.Manygauss(xval, pvec)) / weight
+        else:
+            if kmpfit is None:
+                raise ImportError(
+                    "kapteyn is required for kmpfit MC path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
+
+        param_samples = []
+        fwhm_samples, sigma_samples, ew_samples = [], [], []
+        peak_samples, area_samples = [], []
         na_all_dict = {}
         if 'OIII4959w' in linenames and 'OIII5007w' in linenames:
-            linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])  
+            linenames = np.append(linenames, ['OIII4959_whole', 'OIII5007_whole'])
         if 'CIV_br' in linenames and 'CIV_na' in linenames:
-            linenames = np.append(linenames, ['CIV_whole'])  
-        for line in linenames: 
-            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
+            linenames = np.append(linenames, ['CIV_whole'])
+        for line in linenames:
             if 'br' not in line:
-                emp_dict = {'fwhm': [],
-                            'sigma' : [],
-                            'ew' : [],
-                            'peak' : [],
-                            'area' : []}
-                na_all_dict.setdefault(line, emp_dict)
+                na_all_dict.setdefault(line, {'fwhm': [], 'sigma': [], 'ew': [], 'peak': [], 'area': []})
 
-        for tra in range(n_trails):
-            flux = y+np.random.randn(len(y))*err
-            line_fit = kmpfit.Fitter(residuals=self._residuals_line, data=(x, flux, err), maxiter=50)
-            line_fit.parinfo = pp_limits
-            line_fit.fit(params0=pp0)
-            line_fit.params = self.newpp
-            all_para_1comp[:, tra] = line_fit.params
-            
-            # further line properties
-            all_fwhm[tra], all_sigma[tra], all_ew[tra], all_peak[tra], all_area[tra] 
-            broad_all = self.line_prop(compcenter, line_fit.params, 'broad')
-            all_fwhm[tra] = broad_all[0]
-            all_sigma[tra] =  broad_all[1]
-            all_ew[tra] = broad_all[2]
-            all_peak[tra] = broad_all[3]
-            all_area[tra] = broad_all[4]     
+        nline_fit = int(nline_fit)
+        for tra in range(int(max(1, n_trails))):
+            flux = y + np.random.randn(len(y)) * err
+            params_vec = None
+            if use_lmfit:
+                params = make_params()
+                try:
+                    res = minimize(residual_func, params, args=(x, flux, err), method='leastsq')
+                    if getattr(res, 'success', True):
+                        params_vec = np.array([res.params[f"p{i}"].value for i in range(n_params)], dtype=float)
+                        params_vec = self._apply_ties_inplace(params_vec)
+                    else:
+                        continue
+                except Exception:
+                    continue
+            else:
+                line_fit = kmpfit.Fitter(residuals=self._residuals_line, data=(x, flux, err), maxiter=50)
+                line_fit.parinfo = pp_limits
+                line_fit.fit(params0=pp0)
+                params_vec = np.array(self.newpp, dtype=float)
+            param_samples.append(params_vec)
+
+            broad_all = self.line_prop(compcenter, params_vec, 'broad')
+            fwhm_samples.append(broad_all[0])
+            sigma_samples.append(broad_all[1])
+            ew_samples.append(broad_all[2])
+            peak_samples.append(broad_all[3])
+            area_samples.append(broad_all[4])
+
             all_line_name = []
             for n in range(nline_fit):
                 for nn in range(int(ngauss_fit[n])):
@@ -2034,19 +2080,15 @@ class QSOFitNew:
                     all_line_name.append(line_name)
             all_line_name = np.asarray(all_line_name)
 
-            for line in linenames: 
+            for line in linenames:
                 if ('br' not in line) and ('whole' not in line):
                     try:
-                        par_ind = np.where(all_line_name==line)[0][0]*3
-                        linecenter = float(linelist[linelist['linename']==line]['lambda'][0])
-                        params_seg = line_fit.params[par_ind:par_ind+3]
-                        # classify by sigma in km/s
+                        par_ind = np.where(all_line_name == line)[0][0] * 3
+                        linecenter = float(linelist[linelist['linename'] == line]['lambda'][0])
+                        params_seg = params_vec[par_ind:par_ind + 3]
                         sigma_axis = float(params_seg[2])
                         center_axis = float(params_seg[1])
-                        if self.wave_scale == 'log':
-                            sigma_kms = (np.exp(sigma_axis) - 1.0) * self._c_kms
-                        else:
-                            sigma_kms = (sigma_axis / max(center_axis, 1e-20)) * self._c_kms
+                        sigma_kms = float(self._sigma_axis_to_kms(sigma_axis, center_axis))
                         if sigma_kms > float(self.narrow_max_kms):
                             na_tmp = self.line_prop(linecenter, params_seg, 'broad')
                         else:
@@ -2056,43 +2098,51 @@ class QSOFitNew:
                         na_all_dict[line]['ew'].append(na_tmp[2])
                         na_all_dict[line]['peak'].append(na_tmp[3])
                         na_all_dict[line]['area'].append(na_tmp[4])
-                    except:
+                    except Exception:
                         print('Line {} parameters mismatch.'.format(line))
                         pass
                 elif ('whole' in line) and ('CIV_whole' not in line):
                     linec = line.split('_')[0]
-                    linew = linec+'w'
-                    # print('Line: {}. Core: {}. Wing: {}.'.format(line, linec, linew))
-                    par_ind1 = np.where(all_line_name==linec)[0][0]*3
-                    par_ind2 = np.where(all_line_name==linew)[0][0]*3
-                    inds1 = np.concatenate([np.arange(par_ind1, par_ind1+3),
-                                            np.arange(par_ind2, par_ind2+3)])
-                    linecenter = float(linelist[linelist['linename']==linec]['lambda'][0])
-                    na_tmp = self.comb_line_prop(linecenter, line_fit.params[inds1])
+                    linew = linec + 'w'
+                    par_ind1 = np.where(all_line_name == linec)[0][0] * 3
+                    par_ind2 = np.where(all_line_name == linew)[0][0] * 3
+                    inds1 = np.concatenate([np.arange(par_ind1, par_ind1 + 3),
+                                            np.arange(par_ind2, par_ind2 + 3)])
+                    linecenter = float(linelist[linelist['linename'] == linec]['lambda'][0])
+                    na_tmp = self.comb_line_prop(linecenter, params_vec[inds1])
                     na_all_dict[line]['fwhm'].append(na_tmp[0])
                     na_all_dict[line]['sigma'].append(na_tmp[1])
                     na_all_dict[line]['ew'].append(na_tmp[2])
                     na_all_dict[line]['peak'].append(na_tmp[3])
-                    na_all_dict[line]['area'].append(na_tmp[4])  
+                    na_all_dict[line]['area'].append(na_tmp[4])
                 elif 'CIV_whole' in line:
-                    all_civ = self.comb_line_prop(compcenter, line_fit.params)
+                    all_civ = self.comb_line_prop(compcenter, params_vec)
                     na_all_dict[line]['fwhm'].append(all_civ[0])
                     na_all_dict[line]['sigma'].append(all_civ[1])
                     na_all_dict[line]['ew'].append(all_civ[2])
                     na_all_dict[line]['peak'].append(all_civ[3])
-                    na_all_dict[line]['area'].append(all_civ[4]) 
-        for line in linenames: 
-            # if ('br' not in line and 'na' not in line) or ('Ha_na' in line) or ('Hb_na' in line) or ('CIV_na' in line) or ('CIV_whole' in line):
-            if 'br' not in line:
+                    na_all_dict[line]['area'].append(all_civ[4])
+
+        for line in linenames:
+            if 'br' not in line and line in na_all_dict:
                 na_all_dict[line]['fwhm'] = getnonzeroarr(np.asarray(na_all_dict[line]['fwhm']))
                 na_all_dict[line]['sigma'] = getnonzeroarr(np.asarray(na_all_dict[line]['sigma']))
                 na_all_dict[line]['ew'] = getnonzeroarr(np.asarray(na_all_dict[line]['ew']))
                 na_all_dict[line]['peak'] = getnonzeroarr(np.asarray(na_all_dict[line]['peak']))
                 na_all_dict[line]['area'] = getnonzeroarr(np.asarray(na_all_dict[line]['area']))
-        for st in range(len(pp0)):
-            all_para_std[st] = all_para_1comp[st, :].std()
-        
-        return all_para_std, all_fwhm.std(), all_sigma.std(), all_ew.std(), all_peak.std(), all_area.std(), na_all_dict
+
+        if len(param_samples) == 0:
+            return np.zeros(len(pp0)), 0., 0., 0., 0., 0., na_all_dict
+
+        param_samples = np.asarray(param_samples).T
+        all_para_std = param_samples.std(axis=1)
+        all_fwhm_std = np.std(fwhm_samples)
+        all_sigma_std = np.std(sigma_samples)
+        all_ew_std = np.std(ew_samples)
+        all_peak_std = np.std(peak_samples)
+        all_area_std = np.std(area_samples)
+
+        return all_para_std, all_fwhm_std, all_sigma_std, all_ew_std, all_peak_std, all_area_std, na_all_dict
 
 
     def cal_na_line_res(self):
@@ -2132,9 +2182,9 @@ class QSOFitNew:
                 line_centerwave = float(df_gauss[line+'_1_centerwave'][0])
                 line_sigma = float(df_gauss[line+'_1_sigma'][0])
                 line_param = np.array([line_scale,line_centerwave,line_sigma])
-                na_tmp = self.line_prop(linecenter, line_param, 'narrow')
-                if line_sigma > 0.0017:
-                    na_tmp = self.line_prop(linecenter, line_param, 'broad')
+                sigma_kms = float(self._sigma_axis_to_kms(line_sigma, line_centerwave))
+                linetype = 'broad' if sigma_kms > _BROAD_SIGMA_THRESHOLD_KMS else 'narrow'
+                na_tmp = self.line_prop(linecenter, line_param, linetype)
                 par_list = list(self.na_all_dict[line].keys())
                 for i in range(len(par_list)):
                     par = par_list[i]
@@ -2203,10 +2253,7 @@ class QSOFitNew:
             return 0., 0., 0., 0., 0.
         centers = np.array([pp[3*i+1] for i in range(gcount)], dtype=float)
         sigmas = np.array([pp[3*i+2] for i in range(gcount)], dtype=float)
-        if self.wave_scale == 'log':
-            sigma_kms = (np.exp(sigmas) - 1.0) * self._c_kms
-        else:
-            sigma_kms = (sigmas / np.clip(centers, 1e-20, np.inf)) * self._c_kms
+        sigma_kms = self._sigma_axis_to_kms(sigmas, centers)
         thresh = float(self.narrow_max_kms)
         if linetype == 'broad':
             mask_g = sigma_kms > thresh

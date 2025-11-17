@@ -147,6 +147,59 @@ class TestLineMonteCarlo:
         # Test convergence
         pass
     
+    def test_line_mc_lmfit_backend(self, temp_output_dir):
+        """MC should run with the lmfit backend and return non-zero stds"""
+        if not QSOFITMORE_AVAILABLE:
+            pytest.skip("qsofitmore not available")
+        from qsofitmore import QSOFitNew
+        from qsofitmore.config import migration_config
+        prev_global = getattr(migration_config, 'use_lmfit', False)
+        prev_lines = getattr(migration_config, 'use_lmfit_lines', False)
+        migration_config.use_lmfit = True
+        migration_config.use_lmfit_lines = True
+        try:
+            wave = np.linspace(4990.0, 5010.0, 80)
+            flux = np.ones_like(wave)
+            err = np.full_like(wave, 0.1)
+            q = QSOFitNew(lam=wave, flux=flux, err=err, z=0.0, path=temp_output_dir + '/')
+            q.MC = True
+            q.n_trails = 5
+            cont_params = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.5, 0., 5000., 0., 0., 0., 0.])
+            q.conti_fit = type('Fit', (), {'params': cont_params})()
+            q.f_conti_model = np.ones_like(wave)
+            compcenter = 5000.0
+            linelist = np.rec.array(
+                [(compcenter, 'Ha', compcenter-5., compcenter+5., 'Ha_na', 1, 1e-3, 1e-4, 5e-3, 0.,
+                  0, 0, 0, 0.001)],
+                formats='float64,U20,float64,float64,U20,int16,float64,float64,float64,float64,int16,int16,int16,float64',
+                names='lambda,compname,minwav,maxwav,linename,ngauss,inisig,minsig,maxsig,voff,vindex,windex,findex,fvalue'
+            )
+            q.linelist = linelist
+            ind_line = np.array([True])
+            q._do_tie_line(linelist, ind_line)
+            x = q._x_axis(np.linspace(compcenter-5., compcenter+5., 80))
+            true_params = np.array([5.0, np.log(compcenter), 8e-4])
+            y = q.Manygauss(x, true_params)
+            noise = np.full_like(y, 0.3)
+            pp0 = np.array([3.5, np.log(compcenter) + 5e-4, 5e-4])
+            pp_limits = np.array([
+                {'limits': (0.0, 1e3)},
+                {'limits': (np.log(compcenter-2.), np.log(compcenter+2.))},
+                {'limits': (1e-4, 1e-2)}
+            ], dtype=object)
+            results = q.new_line_mc(
+                x, y, noise, pp0, pp_limits, q.n_trails, compcenter, 'Ha',
+                ind_line, 1, linelist[ind_line], np.array([1])
+            )
+            all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = results
+            assert all_para_std.shape[0] == len(pp0)
+            assert fwhm_std >= 0 and sigma_std >= 0
+            assert isinstance(na_dict, dict)
+            assert 'Ha_na' in na_dict
+        finally:
+            migration_config.use_lmfit = prev_global
+            migration_config.use_lmfit_lines = prev_lines
+    
     @pytest.mark.benchmark
     def test_line_mc_performance(self, qso_instance, benchmark):
         """Benchmark line MC performance"""

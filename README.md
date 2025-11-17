@@ -288,7 +288,7 @@ q.setmapname("planck14")
 
 #### Apply `q.Fit()`  
 
-Derived quantities of narrow and broad lines, including FWHM, sigma, EW, and integrated flux (area), are calculated during the fitting process and stored in the output fits file. By specifying `MC = True` when calling `q.Fit()`, the code will also calculate the uncertainties of these quantities using Monte Carlo simulations. The uncertainties are stored in the output fits file as well.
+Derived quantities of narrow and broad lines, including FWHM, sigma, EW, and integrated flux (area), are calculated during the fitting process and stored in the output fits file. By specifying `MC = True` when calling `q.Fit()`, the code will also calculate the uncertainties of these quantities using Monte Carlo simulations using whichever backend (lmfit or kmpfit) is active. These Monte Carlo uncertainties are saved to the output fits file alongside the best-fit values.
 
 
 ```python

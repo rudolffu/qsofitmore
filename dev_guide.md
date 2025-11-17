@@ -54,7 +54,7 @@ python -m pip install -e .[dev]
 - Migration flags locally (lmfit is the default backend):
   - `export QSOFITMORE_USE_LMFIT=false` to force legacy kmpfit globally
   - `export QSOFITMORE_USE_LMFIT_CONTINUUM=false` or `..._LINES=false` to keep individual components on kmpfit
-  - `export QSOFITMORE_USE_LMFIT_MC=true` to opt into lmfit-based Monte Carlo (still experimental)
+  - `export QSOFITMORE_USE_LMFIT_MC=true` to run Monte Carlo error estimation entirely through lmfit (natively supported when the lmfit backend is selected)
 - Tox common runs:
   - `tox -e py311-lmfit` to validate lmfit infra
   - `tox -e py311-kmpfit` to validate legacy path
@@ -98,7 +98,7 @@ Configured in `qsofitmore/config.py` and used in tests/CI. Defaults shown in par
 - `QSOFITMORE_USE_LMFIT` (true): lmfit is the default backend; set to `false` to force kmpfit globally.
 - `QSOFITMORE_USE_LMFIT_CONTINUUM` (true by default via the global flag): Override continuum backend selection.
 - `QSOFITMORE_USE_LMFIT_LINES` (true by default via the global flag): Override line-fitting backend selection.
-- `QSOFITMORE_USE_LMFIT_MC` (false): Enable lmfit-based Monte Carlo.
+- `QSOFITMORE_USE_LMFIT_MC` (false): Enable lmfit-based Monte Carlo (line MC always defers to the active backend; this flag controls whether lmfit is preferred even when legacy code paths exist).
 - `QSOFITMORE_VALIDATE_KMPFIT` (true): Validate against kmpfit results.
 - `QSOFITMORE_BENCHMARK` (false): Enable performance benchmarks.
 - Tolerances: `QSOFITMORE_RTOL` (1e-6), `QSOFITMORE_ATOL` (1e-8).
@@ -207,7 +207,7 @@ q.Fit(name='fit_name',
       iron_temp_name="V09",  # "BG92-VW01", "V09", "G12"
       broken_pl=True,
       BC=True,   # Balmer continuum + high-order Balmer lines
-      MC=True,   # Monte Carlo errors
+      MC=True,   # Monte Carlo errors (uses lmfit when enabled)
       save_result=True,
       plot_fig=True)
 ```
@@ -230,7 +230,7 @@ q.Fit(name='fit_name',
 
 - Flux units: expected in 1e-17 erg/s/cm^2/Å. Multiply raw erg/s/cm^2/Å by 1e17.
 - External data: dust maps are not bundled; fetch locally and configure `dustmaps` data dir.
-- Performance: Monte Carlo estimation can be expensive; keep defaults conservative in tests.
+- Performance: Monte Carlo estimation can be expensive; keep defaults conservative in tests. When lmfit is the active backend, MC draws reuse the lmfit optimizer directly for both continuum and line fits.
 - Examples: notebooks in `qsofitmore/examples/` demonstrate end-to-end usage; outputs are included for reference.
 
 ## Release Checklist
