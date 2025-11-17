@@ -9,6 +9,7 @@ import os
 # Try to import qsofitmore config, skip tests if not available
 try:
     from qsofitmore.config import migration_config
+    from qsofitmore.fitmodule import QSOFitNew, _BROAD_SIGMA_THRESHOLD_KMS
     QSOFITMORE_AVAILABLE = True
 except ImportError:
     QSOFITMORE_AVAILABLE = False
@@ -17,6 +18,8 @@ except ImportError:
         rtol = 1e-6
         atol = 1e-8
     migration_config = DummyConfig()
+    QSOFitNew = None
+    _BROAD_SIGMA_THRESHOLD_KMS = 0.0
 
 
 def generate_reference_spectrum(wave_min=3800, wave_max=9200, resolution=2.0, z=0.5):
@@ -161,6 +164,46 @@ class TestUtilities:
         assert 'Ha_br' in line_names
         assert 'Hb_br' in line_names
         assert 'OIII5007' in line_names
+
+    def test_cal_na_line_res_linear_wave_scale(self, monkeypatch):
+        """Ensure broad/narrow split uses km/s when operating on linear wavelengths"""
+        if not QSOFITMORE_AVAILABLE or QSOFitNew is None:
+            pytest.skip("qsofitmore not available")
+        lam = np.linspace(4000.0, 5100.0, 50)
+        flux = np.ones_like(lam)
+        err = np.full_like(lam, 0.1)
+        q = QSOFitNew(lam, flux, err, z=0.0)
+        q.MC = True
+        q.wave_scale = 'linear'
+        line_name = 'TestLine'
+        q.linelist = np.rec.array([(5000.0, line_name)],
+                                  dtype=[('lambda', 'f8'), ('linename', 'U16')])
+        metrics = ['fwhm', 'sigma', 'ew', 'peak', 'area']
+        q.na_all_dict = {
+            line_name: {metric: np.array([1.0, 1.1]) for metric in metrics}
+        }
+        q.gauss_result_name = np.array([
+            f'{line_name}_1_scale',
+            f'{line_name}_1_centerwave',
+            f'{line_name}_1_sigma',
+        ], dtype=object)
+        center = 5000.0
+        broad_sigma_axis = center * (_BROAD_SIGMA_THRESHOLD_KMS + 10.0) / q._c_kms
+        narrow_sigma_axis = center * (_BROAD_SIGMA_THRESHOLD_KMS - 50.0) / q._c_kms
+        q.gauss_result = np.array([1.0, center, broad_sigma_axis], dtype=float)
+        calls = []
+
+        def fake_line_prop(self, compcenter, params, linetype, save_luminosity=False):
+            calls.append(linetype)
+            return (0.0, 0.0, 0.0, 0.0, 0.0)
+
+        monkeypatch.setattr(QSOFitNew, 'line_prop', fake_line_prop)
+        q.cal_na_line_res()
+        assert calls[-1] == 'broad'
+
+        q.gauss_result = np.array([1.0, center, narrow_sigma_axis], dtype=float)
+        q.cal_na_line_res()
+        assert calls[-1] == 'narrow'
     
     def test_tolerance_settings(self):
         """Test tolerance setting functionality"""
