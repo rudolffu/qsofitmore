@@ -4,6 +4,7 @@
   - `lmfit` is now a core dependency; Kapteyn `kmpfit` is optional via the `legacy` extra.
   - New runtime feature flags in `qsofitmore.config.migration_config` to enable `lmfit` pathways gradually and/or validate against `kmpfit` (via env vars and tox envs).
   - Implemented `lmfit`-based continuum and experimental line-fitting paths behind flags; more robust broken PL; simplified bounds; always include error columns even when `MC=False`; fixed Fe II MC collection for `cal_Fe_line_res`.
+- Pixel rejection now relies solely on explicit masks (`and_mask`, `or_mask`, `wave_mask`); the automatic `_RejectBadPix` outlier filter has been removed to preserve emission-line peaks.
 - MBH utilities: added instrumental FWHM correction and support for runs without uncertainty inputs.
 - Plotting and QA: minor y-axis label tweaks and small plotting improvements.
 - CI/dev: modernized tox matrix, optional Kapteyn install for legacy envs, and various maintenance fixes.
