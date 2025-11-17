@@ -21,7 +21,8 @@ class MigrationConfig:
     
     def __init__(self):
         # Feature flags for migration
-        self._use_lmfit = os.environ.get('QSOFITMORE_USE_LMFIT', 'false').lower() == 'true'
+        # Default to lmfit unless explicitly overridden via env/config
+        self._use_lmfit = os.environ.get('QSOFITMORE_USE_LMFIT', 'true').lower() == 'true'
         self.use_lmfit_continuum = os.environ.get('QSOFITMORE_USE_LMFIT_CONTINUUM', 'false').lower() == 'true'
         self.use_lmfit_lines = os.environ.get('QSOFITMORE_USE_LMFIT_LINES', 'false').lower() == 'true'
         self.use_lmfit_mc = os.environ.get('QSOFITMORE_USE_LMFIT_MC', 'false').lower() == 'true'

@@ -62,11 +62,15 @@ python -m pip install .
 python -m pip install -e .
 ```
 
-### Fitting Backends: kmpfit (default) vs lmfit
+### Fitting Backends: lmfit (default) vs kmpfit
 
-qsofitmore historically uses Kapteyn’s kmpfit as the default backend. If Kapteyn is not installed on your system, you have two choices:
+`lmfit` is now the default optimizer in qsofitmore, so a fresh install works out of the box with no Kapteyn dependency. The legacy Kapteyn `kmpfit` path is still available if you explicitly opt in.
 
-1) Install Kapteyn (kmpfit):
+1) Stay on the default lmfit backend (recommended):
+   - Install qsofitmore normally (no extra dependencies).
+   - Optional: disable Kapteyn-specific tox envs unless you need regression checks.
+
+2) Use the legacy kmpfit backend (requires Kapteyn):
    ```bash
    pip install "cython<3.0"  # Kapteyn requires Cython < 3
    pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
@@ -74,21 +78,21 @@ qsofitmore historically uses Kapteyn’s kmpfit as the default backend. If Kapte
    pip install .[legacy]
    ```
 
-2) Use the lmfit backend (no Kapteyn required):
+   Then disable lmfit explicitly either in Python or via environment variables:
    ```python
-   # Enable lmfit globally (recommended when Kapteyn is unavailable)
+   # Force the legacy kmpfit path
    from qsofitmore.config import migration_config
-   migration_config.use_lmfit = True
+   migration_config.use_lmfit = False
    ```
    or via environment variables before importing qsofitmore:
    ```bash
-   export QSOFITMORE_USE_LMFIT=true
+   export QSOFITMORE_USE_LMFIT=false
    # or more granular control
-   export QSOFITMORE_USE_LMFIT_LINES=true
-   export QSOFITMORE_USE_LMFIT_CONTINUUM=true
+   export QSOFITMORE_USE_LMFIT_LINES=false
+   export QSOFITMORE_USE_LMFIT_CONTINUUM=false
    ```
 
-If you attempt to use kmpfit paths without Kapteyn installed, qsofitmore raises a clear ImportError with brief install instructions. Enabling lmfit (above) avoids the dependency entirely.
+If you attempt to use kmpfit paths without Kapteyn installed, qsofitmore raises a clear ImportError with brief install instructions. Staying on the lmfit default avoids the dependency entirely.
 
 CI and tox notes:
 - kmpfit-specific tox envs install Kapteyn automatically.

@@ -1,5 +1,6 @@
 ### Since v1.2.2 (Unreleased):
 - Migration toward `lmfit`:
+  - `lmfit` now runs by default; set `QSOFITMORE_USE_LMFIT=false` (or adjust `migration_config`) to opt into the legacy `kmpfit` backend when Kapteyn is installed.
   - `lmfit` is now a core dependency; Kapteyn `kmpfit` is optional via the `legacy` extra.
   - New runtime feature flags in `qsofitmore.config.migration_config` to enable `lmfit` pathways gradually and/or validate against `kmpfit` (via env vars and tox envs).
   - Implemented `lmfit`-based continuum and experimental line-fitting paths behind flags; more robust broken PL; simplified bounds; always include error columns even when `MC=False`; fixed Fe II MC collection for `cal_Fe_line_res`.

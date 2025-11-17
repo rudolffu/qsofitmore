@@ -19,8 +19,9 @@ This file acts as the instruction manual for contributors and coding agents (ser
 ## Supported Python and Dependencies
 
 - Python: 3.8–3.11
-- Core dependencies (see `pyproject.toml`): `numpy`, `scipy`, `matplotlib`, `astropy`, `pandas`, `dustmaps`, `kapteyn` (temporary), `lmfit>=1.3.0` (migration target)
-- Install Kapteyn (requires Cython < 3.0):
+- Core dependencies (see `pyproject.toml`): `numpy`, `scipy`, `matplotlib`, `astropy`, `pandas`, `dustmaps`, `lmfit>=1.3.0`.
+- Optional legacy dependency: `kapteyn` (install via `pip install .[legacy]`) to run the kmpfit backend.
+- Install Kapteyn manually (requires Cython < 3.0) if you need kmpfit locally:
   ```bash
   pip install "cython<3.0"
   pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz
@@ -50,11 +51,10 @@ python -m pip install -e .[dev]
 
 - Quick tests (quiet, no benchmarks): `pytest -q`
 - Focus tests by marker: `pytest -m lmfit -q`, `pytest -m "not benchmark"`
-- Migration flags locally:
-  - `export QSOFITMORE_USE_LMFIT=true` to enable lmfit globally
-  - `export QSOFITMORE_USE_LMFIT_CONTINUUM=true` for continuum only
-  - `export QSOFITMORE_USE_LMFIT_LINES=true` for lines only
-  - `export QSOFITMORE_USE_LMFIT_MC=true` for MC only
+- Migration flags locally (lmfit is the default backend):
+  - `export QSOFITMORE_USE_LMFIT=false` to force legacy kmpfit globally
+  - `export QSOFITMORE_USE_LMFIT_CONTINUUM=false` or `..._LINES=false` to keep individual components on kmpfit
+  - `export QSOFITMORE_USE_LMFIT_MC=true` to opt into lmfit-based Monte Carlo (still experimental)
 - Tox common runs:
   - `tox -e py311-lmfit` to validate lmfit infra
   - `tox -e py311-kmpfit` to validate legacy path
@@ -95,9 +95,9 @@ tox -e lint
 
 Configured in `qsofitmore/config.py` and used in tests/CI. Defaults shown in parentheses.
 
-- `QSOFITMORE_USE_LMFIT` (false): Enable lmfit globally.
-- `QSOFITMORE_USE_LMFIT_CONTINUUM` (false): Enable lmfit for continuum only.
-- `QSOFITMORE_USE_LMFIT_LINES` (false): Enable lmfit for line fitting only.
+- `QSOFITMORE_USE_LMFIT` (true): lmfit is the default backend; set to `false` to force kmpfit globally.
+- `QSOFITMORE_USE_LMFIT_CONTINUUM` (true by default via the global flag): Override continuum backend selection.
+- `QSOFITMORE_USE_LMFIT_LINES` (true by default via the global flag): Override line-fitting backend selection.
 - `QSOFITMORE_USE_LMFIT_MC` (false): Enable lmfit-based Monte Carlo.
 - `QSOFITMORE_VALIDATE_KMPFIT` (true): Validate against kmpfit results.
 - `QSOFITMORE_BENCHMARK` (false): Enable performance benchmarks.
@@ -140,9 +140,13 @@ See `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb` for an end-to-end not
 
 Examples:
 ```bash
-export QSOFITMORE_USE_LMFIT=true
+# Default (lmfit) - disable Kapteyn validation for speed
 export QSOFITMORE_VALIDATE_KMPFIT=false
 pytest -m "not benchmark" -q
+
+# Force the legacy kmpfit backend (requires Kapteyn)
+export QSOFITMORE_USE_LMFIT=false
+pytest -m kmpfit -q
 ```
 
 ## CI Notes
