@@ -99,6 +99,8 @@ class QSOFitNew:
         self.velocity_units = migration_config.velocity_units  # 'lnlambda' or 'km/s'
         self._c_kms = 299792.458
         self.narrow_max_kms = migration_config.narrow_max_kms
+        self._broken_pl_profile = 'optical'
+        self._broken_pl_params = {'pivot': 3000.0, 'break_wave': 4661.0}
 
     def _linelist_path(self) -> str:
         """Return the on-disk path for the active wavelength-scale line table."""
@@ -173,6 +175,35 @@ class QSOFitNew:
             return (np.exp(sigma_axis) - 1.0) * self._c_kms
         denom = np.clip(center_axis, 1e-20, np.inf)
         return (sigma_axis / denom) * self._c_kms
+
+    def _configure_broken_pl_profile(self, wave):
+        """Select optical vs NIR broken PL profile based on wavelength span."""
+        wave = np.asarray(wave, dtype=float)
+        if wave.size == 0:
+            return self._broken_pl_profile
+        wmin = float(np.nanmin(wave))
+        wmax = float(np.nanmax(wave))
+
+        def _covers(break_wave: float) -> bool:
+            return wmin < break_wave < wmax
+
+        optical_in = _covers(4661.0)
+        nir_in = _covers(9800.0)
+        if optical_in or not nir_in:
+            profile = 'optical'
+            params = {'pivot': 3000.0, 'break_wave': 4661.0}
+        else:
+            profile = 'nir'
+            params = {'pivot': 9400.0, 'break_wave': 9800.0}
+        self._broken_pl_profile = profile
+        self._broken_pl_params = params
+        return profile
+
+    def _broken_pl_flux(self, wave, slope_blue, slope_red, norm):
+        params = getattr(self, '_broken_pl_params', None)
+        if params is None:
+            params = {'pivot': 3000.0, 'break_wave': 4661.0}
+        return broken_pl_model(wave, slope_blue, slope_red, norm, **params)
 
     def _apply_ties_inplace(self, pp):
         """Apply tying for centers/widths/flux according to current axis.
@@ -453,6 +484,12 @@ class QSOFitNew:
 
         SNR_SPEC = np.nanmedian(self.flux_prereduced/self.err_prereduced)
 
+        if self.broken_pl:
+            self._configure_broken_pl_profile(wave)
+        else:
+            self._broken_pl_profile = 'optical'
+            self._broken_pl_params = {'pivot': 3000.0, 'break_wave': 4661.0}
+
         # set initial paramiters for continuum
         if self.initial_guess is not None:
             pp0 = self.initial_guess
@@ -501,16 +538,12 @@ class QSOFitNew:
             elif self.poly ==False and self.broken_pl == False:
                 tmp_conti = (conti_fit.params[6]*(wave[tmp_all]/self.pl_pivot)**conti_fit.params[7])
             elif self.poly == True and self.broken_pl == True:
-                tmp_conti = broken_pl_model(wave[tmp_all],
-                                            conti_fit.params[7],
-                                            conti_fit.params[14],
-                                            conti_fit.params[6])+self.F_poly_conti(wave[tmp_all], 
-                                                                                   conti_fit.params[11:14])
+                tmp_conti = self._broken_pl_flux(
+                    wave[tmp_all], conti_fit.params[7], conti_fit.params[14], conti_fit.params[6]) \
+                    + self.F_poly_conti(wave[tmp_all], conti_fit.params[11:14])
             elif self.poly == False and self.broken_pl == True:
-                tmp_conti = broken_pl_model(wave[tmp_all],
-                                            conti_fit.params[7],
-                                            conti_fit.params[14],
-                                            conti_fit.params[6])
+                tmp_conti = self._broken_pl_flux(
+                    wave[tmp_all], conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
             ind_noBAL = ~np.where(((flux[tmp_all] < tmp_conti-3.*err[tmp_all]) & (wave[tmp_all] < 3500.)), True, False)
             if getattr(migration_config, 'use_lmfit_continuum', False):
                 conti_fit = self._fit_continuum_lmfit(
@@ -658,7 +691,7 @@ class QSOFitNew:
         f_fe_g12_model = self.Fe_flux_g12(wave, conti_fit.params[3:6])
         f_pl_model = conti_fit.params[6]*(wave/self.pl_pivot)**conti_fit.params[7]
         if self.broken_pl == True:
-            f_pl_model = broken_pl_model(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
+            f_pl_model = self._broken_pl_flux(wave, conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
         f_bc_model = self.Balmer_conti(wave, conti_fit.params[8]) + self.Balmer_high_order(wave, conti_fit.params[9:11])
         f_poly_model = self.F_poly_conti(wave, conti_fit.params[11:14])
         # build conti_model using iron_temp_name
@@ -709,7 +742,7 @@ class QSOFitNew:
         # polynormal conponent for reddened spectra
         f_poly = self.F_poly_conti(xval, pp[11:14])
         if self.broken_pl == True:
-            f_pl = broken_pl_model(xval, pp[7], pp[14], pp[6])
+            f_pl = self._broken_pl_flux(xval, pp[7], pp[14], pp[6])
         
         if self.include_iron:
             if   self.iron_temp_name == "BG92-VW01":
@@ -754,7 +787,7 @@ class QSOFitNew:
         """
         conti_flux = pp[6]*(wave/self.pl_pivot)**pp[7]+self.F_poly_conti(wave, pp[11:14])
         if self.broken_pl:
-            conti_flux = broken_pl_model(wave, pp[7], pp[14], pp[6]) + self.F_poly_conti(wave, pp[11:14])
+            conti_flux = self._broken_pl_flux(wave, pp[7], pp[14], pp[6]) + self.F_poly_conti(wave, pp[11:14])
         # plt.plot(wave,conti_flux)
         lamL = []
         for lam in [1350., 3000., 5100.]:
@@ -1395,10 +1428,12 @@ class QSOFitNew:
                  conti_fit, all_comp_range, uniq_linecomp_sort, line_flux, save_fig_path):
         """Plot the results"""
         if self.broken_pl == True:
-            self.PL_poly = broken_pl_model(wave, 
-                                           conti_fit.params[7],
-                                           conti_fit.params[14],
-                                           conti_fit.params[6]) + self.F_poly_conti(wave, conti_fit.params[11:14])
+            self.PL_poly = self._broken_pl_flux(
+                wave,
+                conti_fit.params[7],
+                conti_fit.params[14],
+                conti_fit.params[6],
+            ) + self.F_poly_conti(wave, conti_fit.params[11:14])
         else:
             self.PL_poly = conti_fit.params[6]*(wave/self.pl_pivot)**conti_fit.params[7]+self.F_poly_conti(wave, 
                                                                                                     conti_fit.params[11:14])
@@ -1581,7 +1616,7 @@ class QSOFitNew:
         f_fe_verner_model = self.Fe_flux_verner(wave, pp[3:6])
         f_pl_model = pp[6]*(wave/self.pl_pivot)**pp[7]
         if self.broken_pl == True:
-            f_pl_model = broken_pl_model(wave, pp[7], pp[14], pp[6])
+            f_pl_model = self._broken_pl_flux(wave, pp[7], pp[14], pp[6])
         f_bc_model = self.Balmer_conti(wave, pp[8]) + self.Balmer_high_order(wave, pp[9:11])
         f_poly_model = self.F_poly_conti(wave, pp[11:14])
         f_conti_no_fe = f_pl_model+f_poly_model+f_bc_model
