@@ -204,7 +204,26 @@ class TestUtilities:
         q.gauss_result = np.array([1.0, center, narrow_sigma_axis], dtype=float)
         q.cal_na_line_res()
         assert calls[-1] == 'narrow'
-    
+
+    def test_broken_pl_profile_selection(self):
+        """Profile selection switches between optical and NIR breaks automatically."""
+        if not QSOFITMORE_AVAILABLE or QSOFitNew is None:
+            pytest.skip("qsofitmore not available")
+        lam_nir = np.linspace(9000.0, 11000.0, 200)
+        flux = np.ones_like(lam_nir)
+        err = np.full_like(lam_nir, 0.1)
+        q = QSOFitNew(lam_nir, flux, err, z=0.0)
+        profile = q._configure_broken_pl_profile(lam_nir)
+        assert profile == 'nir'
+        assert q._broken_pl_params['pivot'] == 9400.0
+        assert q._broken_pl_params['break_wave'] == 9800.0
+
+        lam_wide = np.linspace(2000.0, 12000.0, 400)
+        profile2 = q._configure_broken_pl_profile(lam_wide)
+        assert profile2 == 'optical'
+        assert q._broken_pl_params['pivot'] == 3000.0
+        assert q._broken_pl_params['break_wave'] == 4661.0
+
     def test_tolerance_settings(self):
         """Test tolerance setting functionality"""
         config = migration_config

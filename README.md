@@ -356,7 +356,13 @@ Try:
 
 #### a) The broken power-law model
 
-The broken power-law model is an optional feature in the continuum fitting process. It is enabled by setting `broken_pl = True` in `q.Fit()`. The default is `False`.
+The broken power-law model is an optional feature in the continuum fitting process. It is enabled by setting `broken_pl = True` in `q.Fit()`. The default is `False`. When enabled, qsofitmore inspects the rest-frame wavelength coverage and automatically picks the appropriate profile:
+
+- If the spectrum spans the traditional UV/optical break (4661 Å) it uses the legacy profile with a 3000 Å pivot so existing fits are unchanged (even if the NIR break is also covered).
+- Otherwise, if only the NIR break at 9800 Å is inside the fitting range, it switches to a NIR profile with a 9400 Å pivot while maintaining continuity at 9800 Å.
+- Spectra that miss both breaks fall back to the optical profile.
+
+No extra flag is required—`broken_pl=True` will adapt to the wavelength span automatically.
 
 #### b) Choose the FeII template
 The FeII template can be chosen by setting `iron_temp_name` in `q.Fit()`. The options are:
