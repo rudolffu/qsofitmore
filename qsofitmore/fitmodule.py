@@ -927,6 +927,10 @@ class QSOFitNew:
         fe_nir = self.fe_nir
         yval = np.zeros_like(xval)
 
+        # Force zero shift for the NIR G12 template to avoid poorly constrained offsets
+        pp = np.array(pp, dtype=float, copy=True)
+        pp[2] = 0.0
+
         # raw template
         wave_Fe = fe_nir[:, 0]
         flux_Fe = fe_nir[:, 1] * 100 # normalization to 1 
