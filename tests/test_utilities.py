@@ -224,6 +224,71 @@ class TestUtilities:
         assert q._broken_pl_params['pivot'] == 3000.0
         assert q._broken_pl_params['break_wave'] == 4661.0
 
+    def test_qso_init_refreshes_axis_env_after_import(self, monkeypatch):
+        """Notebook cells can set axis env vars after importing qsofitmore."""
+        if not QSOFITMORE_AVAILABLE or QSOFitNew is None:
+            pytest.skip("qsofitmore not available")
+        old_settings = (
+            migration_config.wave_scale,
+            migration_config.velocity_units,
+            migration_config.narrow_max_kms,
+        )
+        monkeypatch.setenv('QSOFITMORE_WAVE_SCALE', 'linear')
+        monkeypatch.setenv('QSOFITMORE_VELOCITY_UNITS', 'km/s')
+        monkeypatch.setenv('QSOFITMORE_NARROW_MAX_KMS', '900')
+        lam = np.linspace(4000.0, 5100.0, 20)
+        flux = np.ones_like(lam)
+        err = np.full_like(lam, 0.1)
+        try:
+            q = QSOFitNew(lam, flux, err, z=0.0)
+            assert q.wave_scale == 'linear'
+            assert q.velocity_units == 'km/s'
+            assert q.narrow_max_kms == 900.0
+        finally:
+            (
+                migration_config.wave_scale,
+                migration_config.velocity_units,
+                migration_config.narrow_max_kms,
+            ) = old_settings
+
+    def test_linelist_path_falls_back_to_output_directory(self, monkeypatch, tmp_path):
+        """A notebook with path omitted can still find ./output/qsopar_linear.fits."""
+        if not QSOFITMORE_AVAILABLE or QSOFitNew is None:
+            pytest.skip("qsofitmore not available")
+        monkeypatch.chdir(tmp_path)
+        output_dir = tmp_path / 'output'
+        output_dir.mkdir()
+        linelist = output_dir / 'qsopar_linear.fits'
+        linelist.touch()
+        lam = np.linspace(4000.0, 5100.0, 20)
+        flux = np.ones_like(lam)
+        err = np.full_like(lam, 0.1)
+        q = QSOFitNew(lam, flux, err, z=0.0)
+        q.wave_scale = 'linear'
+        assert q._linelist_path() == os.path.join('output', 'qsopar_linear.fits')
+
+    def test_save_result_uses_output_directory_when_path_omitted(self, monkeypatch, tmp_path):
+        """Saving results should not concatenate None with the output filename."""
+        if not QSOFITMORE_AVAILABLE or QSOFitNew is None:
+            pytest.skip("qsofitmore not available")
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / 'output').mkdir()
+        lam = np.linspace(4000.0, 5100.0, 20)
+        flux = np.ones_like(lam)
+        err = np.full_like(lam, 0.1)
+        q = QSOFitNew(lam, flux, err, z=0.0)
+        q._SaveResult(
+            np.array([1.0]),
+            np.array(['float64']),
+            np.array(['TESTVAL']),
+            np.array([]),
+            np.array([]),
+            np.array([]),
+            None,
+            'result.fits',
+        )
+        assert (tmp_path / 'output' / 'result.fits').exists()
+
     def test_tolerance_settings(self):
         """Test tolerance setting functionality"""
         config = migration_config

@@ -95,6 +95,7 @@ class QSOFitNew:
         # pivot for the power‐law continuum (default 3000 Å)
         self.pl_pivot = 3000.0
         # Wavelength/velocity configuration
+        migration_config.refresh_axis_from_env()
         self.wave_scale = migration_config.wave_scale  # 'log' or 'linear'
         self.velocity_units = migration_config.velocity_units  # 'lnlambda' or 'km/s'
         self._c_kms = 299792.458
@@ -107,8 +108,46 @@ class QSOFitNew:
         base = 'qsopar_linear' if self.wave_scale == 'linear' else 'qsopar_log'
         filename = f"{base}.fits"
         if not self.path:
-            return filename
+            output_path = os.path.join('output', filename)
+            return output_path if os.path.exists(output_path) else filename
         return os.path.join(self.path, filename)
+
+    def _linelist_missing_message(self, linelist_path: str) -> str:
+        """Build an actionable error message for a missing line parameter file."""
+        base = os.path.basename(linelist_path)
+        details = (
+            f"Line parameter file not found: {linelist_path!r}. "
+            f"Current wave_scale={self.wave_scale!r}, so qsofitmore expects {base!r}. "
+        )
+        if not self.path:
+            details += (
+                "Pass path='./output/' (or the directory containing the line table) "
+                "to QSOFitNew, or create the file in the current working directory. "
+            )
+            output_candidate = os.path.join('output', base)
+            if output_candidate != linelist_path:
+                details += f"If you keep line tables under ./output, expected path is {output_candidate!r}. "
+        else:
+            details += f"Create {base!r} under path={self.path!r}. "
+        if self.wave_scale == 'linear':
+            details += "For linear runs, regenerate qsopar_linear.fits from qsopar_linear.csv/yaml before fitting."
+        else:
+            details += "For log runs, generate qsopar_log.fits before fitting."
+        return details
+
+    def _default_output_dir(self) -> str:
+        """Return the default directory for fit products."""
+        if self.path:
+            return self.path
+        return 'output' if os.path.isdir('output') else '.'
+
+    def _output_file_path(self, directory, filename):
+        """Return a robust output filename and create the directory if needed."""
+        if directory is None:
+            directory = self._default_output_dir()
+        if directory and directory != '.':
+            os.makedirs(directory, exist_ok=True)
+        return os.path.join(directory or '.', filename)
 
     # -------- Axis/units helpers (for gradual migration) --------
     def _x_axis(self, wave):
@@ -1324,9 +1363,9 @@ class QSOFitNew:
         
         # set default path for figure and fits
         if save_result == True and save_fits_path == None:
-            save_fits_path = self.path
+            save_fits_path = self._default_output_dir()
         if save_fig == True and save_fig_path == None:
-            save_fig_path = self.path
+            save_fig_path = self._default_output_dir()
         if save_fits_name == None:
             save_fits_name = f'res_qsofitmore_{self.name}.fits'        
         
@@ -1425,7 +1464,7 @@ class QSOFitNew:
         if 'Ha_whole_br_area_err' in self.all_result_name:
             t['LOGLHA_ERR'] = np.abs(t['Ha_whole_br_area_err'] / (t['Ha_whole_br_area'] * np.log(10)))
         self.result_table = t
-        t.write(save_fits_path+save_fits_name, format='fits', overwrite=True)
+        t.write(self._output_file_path(save_fits_path, save_fits_name), format='fits', overwrite=True)
 
 
     def _PlotFig(self, ra, dec, z, wave, flux, err, decomposition_host, linefit, tmp_all, gauss_result, f_conti_model,
@@ -1575,8 +1614,8 @@ class QSOFitNew:
             plt.ylabel(r'$F_{\lambda}$ ($\rm 10^{-17} erg\;s^{-1}\;cm^{-2}\;\AA^{-1}$)', fontsize=22)
 
         if self.save_fig == True:
-            plt.savefig(save_fig_path+f'plot_fit_{self.name}.pdf', bbox_inches='tight')
-            plt.savefig(save_fig_path+f'plot_fit_{self.name}.jpg', dpi=300, bbox_inches='tight')
+            plt.savefig(self._output_file_path(save_fig_path, f'plot_fit_{self.name}.pdf'), bbox_inches='tight')
+            plt.savefig(self._output_file_path(save_fig_path, f'plot_fit_{self.name}.jpg'), dpi=300, bbox_inches='tight')
         # plt.show()
         # plt.close()
     
@@ -1670,7 +1709,10 @@ class QSOFitNew:
                                            (wave > 1150.) & (wave < 1290.))) & (line_flux < -err)), True, False)
         
         # read line parameter
-        linepara = fits.open(self._linelist_path())
+        linelist_path = self._linelist_path()
+        if not os.path.exists(linelist_path):
+            raise FileNotFoundError(self._linelist_missing_message(linelist_path))
+        linepara = fits.open(linelist_path)
         linelist = linepara[1].data
         mask_compname = self.mask_compname
         if mask_compname is not None:
