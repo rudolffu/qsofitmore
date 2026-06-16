@@ -51,10 +51,8 @@ python -m pip install -e .[dev]
 
 - Quick tests (quiet, no benchmarks): `pytest -q`
 - Focus tests by marker: `pytest -m lmfit -q`, `pytest -m "not benchmark"`
-- Migration flags locally (lmfit is the default backend):
+- Runtime backend config locally (lmfit is the default backend):
   - `export QSOFITMORE_USE_LMFIT=false` to force legacy kmpfit globally
-  - `export QSOFITMORE_USE_LMFIT_CONTINUUM=false` or `..._LINES=false` to keep individual components on kmpfit
-  - `export QSOFITMORE_USE_LMFIT_MC=true` to run Monte Carlo error estimation entirely through lmfit (natively supported when the lmfit backend is selected)
 - Tox common runs:
   - `tox -e py311-lmfit` to validate lmfit infra
   - `tox -e py311-kmpfit` to validate legacy path
@@ -77,7 +75,7 @@ This repository uses `pytest` with markers configured in `pytest.ini`.
 
 ### Tox Environments
 
-`tox.ini` defines matrix envs for Python 3.8–3.11 and for migration modes:
+`tox.ini` defines matrix envs for Python 3.8–3.11 and backend modes:
 
 - Envs: `py{38,39,310,311}-{kmpfit,lmfit,migration}`
 - Feature flags are set via environment variables (see next section).
@@ -91,33 +89,38 @@ tox -e coverage
 tox -e lint
 ```
 
-### Feature Flags (Environment Variables)
+### Runtime Config (Environment Variables)
 
 Configured in `qsofitmore/config.py` and used in tests/CI. Defaults shown in parentheses.
 
 - `QSOFITMORE_USE_LMFIT` (true): lmfit is the default backend; set to `false` to force kmpfit globally.
-- `QSOFITMORE_USE_LMFIT_CONTINUUM` (true by default via the global flag): Override continuum backend selection.
-- `QSOFITMORE_USE_LMFIT_LINES` (true by default via the global flag): Override line-fitting backend selection.
-- `QSOFITMORE_USE_LMFIT_MC` (false): Enable lmfit-based Monte Carlo (line MC always defers to the active backend; this flag controls whether lmfit is preferred even when legacy code paths exist).
+- Deprecated component-level lmfit environment variables are ignored with a warning. Partial lmfit/kmpfit mixing is compatibility-only and not a supported public mode.
 - `QSOFITMORE_VALIDATE_KMPFIT` (true): Validate against kmpfit results.
 - `QSOFITMORE_BENCHMARK` (false): Enable performance benchmarks.
 - Tolerances: `QSOFITMORE_RTOL` (1e-6), `QSOFITMORE_ATOL` (1e-8).
 
-#### Linear Wavelength Mode + km/s Parameters
+#### Line Table Axis + Velocity Units
 
-For easier parameter limits and interpretation, you can fit emission lines on a linear wavelength axis and specify Gaussian widths/offsets in km/s:
+Emission-line tables are auto-detected by default. `QSOFitNew.Fit(...)` accepts:
 
-- `QSOFITMORE_WAVE_SCALE` (`log`|`linear`): choose the model axis for line fitting. Defaults to `log` for backward compatibility.
-- `QSOFITMORE_VELOCITY_UNITS` (`lnlambda`|`km/s`): units for `inisig/minsig/maxsig/voff` in the line parameter tables. Use `km/s` for linear mode.
+- `line_list_path=None`: optional explicit table path.
+- `wave_scale="auto"`: infer `log` or `linear` from FITS metadata, filename, or table values.
+- `velocity_units="auto"`: infer `lnlambda` or `km/s` from FITS metadata or table values.
+
+Resolution order without an explicit path is `qsopar.fits`, `qsopar_linear.fits`, then `qsopar_log.fits` under the fit output path, `./output`, and the current directory. Use `qsopar.fits` as the preferred filename for new workflows; the legacy names remain supported.
+
+Environment fallbacks:
+
+- `QSOFITMORE_WAVE_SCALE` (`auto`|`log`|`linear`): override model axis for line fitting.
+- `QSOFITMORE_VELOCITY_UNITS` (`auto`|`lnlambda`|`km/s`): override units for `inisig/minsig/maxsig/voff`.
 - `QSOFITMORE_NARROW_MAX_KMS` (default `1200`): maximum allowed Gaussian sigma for “narrow” components (applied to non-`*br` lines).
 
 Example session:
 ```python
-import os
-os.environ['QSOFITMORE_WAVE_SCALE'] = 'linear'
-os.environ['QSOFITMORE_VELOCITY_UNITS'] = 'km/s'
-os.environ['QSOFITMORE_NARROW_MAX_KMS'] = '1200'
 from qsofitmore import QSOFitNew
+
+q = QSOFitNew(lam=wave, flux=flux, err=err, z=z, path='output/')
+q.Fit(line_list_path='output/qsopar.fits')
 ```
 
 CSV/YAML conversion utilities (legacy ln(lambda) → km/s) live in `qsofitmore/line_params_io.py`:
@@ -132,15 +135,18 @@ from qsofitmore.line_params_io import (
 convert_csv_lnlambda_to_kms('examples/output/qsopar_log.csv', 'examples/output/qsopar_linear.csv')
 convert_yaml_lnlambda_to_kms('examples/output/qsopar_log.yaml', 'examples/output/qsopar_linear.yaml')
 
-# Write FITS; header will record VELUNIT=km/s when env is set
-csv_to_fits('examples/output/qsopar_linear.csv', 'examples/output/qsopar_linear.fits')
+# Write FITS; header records WAVESCL=linear and VELUNIT=km/s
+csv_to_fits('examples/output/qsopar_linear.csv',
+            'examples/output/qsopar.fits',
+            wave_scale='linear',
+            velocity_units='km/s')
+```
 
 Interactive notebooks mirror the same workflow:
 - `examples/1a-make_parlist_log.ipynb` builds the baseline log table (and honors `QSOFITMORE_WAVE_SCALE` if you need the linear variant).
 - `examples/1b-generate_linear_parlist.ipynb` rebuilds `qsopar_linear.fits` from the CSV/YAML exports.
 - `examples/1c-edit_parlist_csv_yaml.ipynb` round-trips parameters through CSV/YAML editors.
 - `examples/2a-fit_qso_spectrum_log.ipynb` and `examples/2b-fit_qso_spectrum_linear.ipynb` show complete log vs. linear fitting sessions.
-```
 
 See `qsofitmore/examples/2a-fit_qso_spectrum_log.ipynb` for the baseline log-axis walkthrough and `qsofitmore/examples/2b-fit_qso_spectrum_linear.ipynb` for the linear/km-s variant.
 
@@ -158,9 +164,9 @@ pytest -m kmpfit -q
 ## CI Notes
 
 The workflow `.github/workflows/migration-tests.yml` runs:
-- Infrastructure tests to validate config and flags.
+- Infrastructure tests to validate runtime config.
 - lmfit-only tests (no Kapteyn) and optional benchmarks.
-- Integration checks for migration flags.
+- Integration checks for backend selection and line-table inference.
 
 If you change feature flags, markers, or test paths, update this workflow and this guide accordingly.
 
@@ -175,10 +181,10 @@ If you change feature flags, markers, or test paths, update this workflow and th
 
 ### Core Modules
 
-- `fitmodule.py`: main engine (currently uses Kapteyn `kmpfit`).
+- `fitmodule.py`: main engine; lmfit is the default backend and Kapteyn `kmpfit` is retained for explicit legacy runs.
 - `auxmodule.py`: helpers and plotting style (`sciplotstyle()`).
 - `extinction.py`: extinction/dust laws.
-- `config.py`: `migration_config` with feature flags and tolerances.
+- `config.py`: `migration_config` compatibility object with backend/runtime config and tolerances.
 
 ### Data Layout
 

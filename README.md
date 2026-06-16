@@ -87,9 +87,6 @@ python -m pip install -e .
    or via environment variables before importing qsofitmore:
    ```bash
    export QSOFITMORE_USE_LMFIT=false
-   # or more granular control
-   export QSOFITMORE_USE_LMFIT_LINES=false
-   export QSOFITMORE_USE_LMFIT_CONTINUUM=false
    ```
 
 If you attempt to use kmpfit paths without Kapteyn installed, qsofitmore raises a clear ImportError with brief install instructions. Staying on the lmfit default avoids the dependency entirely.
@@ -98,19 +95,27 @@ CI and tox notes:
 - kmpfit-specific tox envs install Kapteyn automatically.
 - Example: `tox -e py311-kmpfit`
 
-### Linear Wavelength Mode and km/s Parameters (optional)
+### Line Tables: Automatic log/linear and velocity-unit detection
 
-For easier parameter limits and interpretation, you can fit emission lines on a linear wavelength axis and specify Gaussian widths/offsets in km/s.
+Emission-line Gaussian fitting automatically infers whether a line table is written for log-wavelength/ln(lambda) parameters or linear-wavelength/km/s parameters. The continuum fit always uses physical wavelength arrays; the line-table axis choice applies only to emission-line fitting.
 
-Environment flags (set before importing qsofitmore):
-```bash
-export QSOFITMORE_WAVE_SCALE=linear            # axis for line fitting (log|linear)
-export QSOFITMORE_VELOCITY_UNITS=km/s          # interpret inisig/minsig/maxsig/voff as km/s
-export QSOFITMORE_NARROW_MAX_KMS=1200          # cap for narrow components (non-*br lines)
+Preferred workflow:
+```python
+q.Fit(line_list_path="output/qsopar.fits")
+```
+
+When `line_list_path` is not provided, qsofitmore searches for `qsopar.fits`, then `qsopar_linear.fits`, then `qsopar_log.fits` under the fit output path, `./output`, and the current directory. FITS headers `WAVESCL`/`WAVESCALE` and `VELUNIT` are preferred; filenames and table values are used as fallbacks. Existing `qsopar_log.fits` and `qsopar_linear.fits` files remain readable.
+
+You can still override detection when needed:
+```python
+q.Fit(line_list_path="output/qsopar_linear.fits",
+      wave_scale="linear",
+      velocity_units="km/s")
 ```
 
 Parameter editing workflow:
 - Use the CSV/YAML helpers to export, edit, and round-trip the parameter list.
+- Write the preferred canonical filename `qsopar.fits`; metadata records the axis and units.
 - Converters are available to transform legacy ln(lambda) values to km/s:
   ```python
   from qsofitmore.line_params_io import (
@@ -121,7 +126,9 @@ Parameter editing workflow:
   convert_csv_lnlambda_to_kms('qsofitmore/examples/output/qsopar_log.csv',
                               'qsofitmore/examples/output/qsopar_linear.csv')
   csv_to_fits('qsofitmore/examples/output/qsopar_linear.csv',
-              'qsofitmore/examples/output/qsopar_linear.fits')
+              'qsofitmore/examples/output/qsopar.fits',
+              wave_scale='linear',
+              velocity_units='km/s')
   ```
 
 Examples:
@@ -137,7 +144,7 @@ This tutorial can be run under `examples` directory of `qsofitmore`. The noteboo
 
 ### 2.1 Generate line parameter file
 
-In this example (mirroring `1a-make_parlist_log.ipynb`), we read a line parameter file in csv format and convert it to fits format. The csv file can be edited manually. The output fits file (`qsopar_log.fits`) will be used in the fitting process. You can also use the provided `qsofitmore/examples/output/qsopar_log.fits` file directly without running this step. For a linear-axis copy, see `1b-generate_linear_parlist.ipynb` which rebuilds `qsopar_linear.fits` from the CSV/YAML exports.
+In this example (mirroring `1a-make_parlist_log.ipynb`), we read a line parameter file in csv format and convert it to fits format. The csv file can be edited manually. The preferred output fits file is `qsopar.fits`; qsofitmore records axis/unit metadata in the FITS header and auto-detects it during fitting. Existing `qsopar_log.fits` and `qsopar_linear.fits` files remain supported. For a linear-axis copy, see `1b-generate_linear_parlist.ipynb` which rebuilds a km/s table from the CSV/YAML exports.
 
 ```python
 import numpy as np
@@ -176,7 +183,9 @@ lambda compname  minwav  maxwav   linename  ngauss  inisig    minsig  maxsig    
 
 # convert to fits
 tb = Table.from_pandas(df_line)
-tb.write(path+'qsopar_log.fits', overwrite=True)
+tb.meta['WAVESCL'] = 'log'
+tb.meta['VELUNIT'] = 'lnlambda'
+tb.write(path+'qsopar.fits', overwrite=True)
 
 ```
 

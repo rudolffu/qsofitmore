@@ -1,7 +1,5 @@
-#!/usr/bin/env python
-import json
 import os
-import sys
+import warnings
 
 
 class Config():
@@ -17,22 +15,38 @@ class Config():
 
 
 class MigrationConfig:
-    """Configuration for gradual migration from kmpfit to lmfit"""
+    """Runtime configuration for optimizer backend and line-axis defaults.
+
+    The name is retained for compatibility with existing notebooks, but lmfit is
+    now the default backend and the migration-era per-component flags collapse to
+    the single public ``use_lmfit`` switch.
+    """
     
     def __init__(self):
-        # Feature flags for migration
-        # Default to lmfit unless explicitly overridden via env/config
+        # Default to lmfit unless explicitly overridden via env/config.
         self._use_lmfit = os.environ.get('QSOFITMORE_USE_LMFIT', 'true').lower() == 'true'
-        self.use_lmfit_continuum = os.environ.get('QSOFITMORE_USE_LMFIT_CONTINUUM', 'false').lower() == 'true'
-        self.use_lmfit_lines = os.environ.get('QSOFITMORE_USE_LMFIT_LINES', 'false').lower() == 'true'
-        self.use_lmfit_mc = os.environ.get('QSOFITMORE_USE_LMFIT_MC', 'false').lower() == 'true'
+        deprecated_backend_env = [
+            name for name in (
+                'QSOFITMORE_USE_LMFIT_CONTINUUM',
+                'QSOFITMORE_USE_LMFIT_LINES',
+                'QSOFITMORE_USE_LMFIT_MC',
+            )
+            if name in os.environ
+        ]
+        if deprecated_backend_env:
+            warnings.warn(
+                ", ".join(deprecated_backend_env)
+                + " are deprecated and ignored; set QSOFITMORE_USE_LMFIT=true/false instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
         
         # Wavelength axis and velocity-param units
-        # wave_scale: 'log' (default, legacy) or 'linear'
-        self.wave_scale = 'log'
+        # wave_scale: 'auto' (default), 'log', or 'linear'
+        self.wave_scale = 'auto'
         # velocity_units: how to interpret inisig/minsig/maxsig/voff in line tables
-        # 'lnlambda' (default, legacy) or 'km/s'
-        self.velocity_units = 'lnlambda'
+        # 'auto' (default), 'lnlambda', or 'km/s'
+        self.velocity_units = 'auto'
         # Max width for narrow components, in km/s (default 1200)
         self.narrow_max_kms = 1200.0
         self.refresh_axis_from_env(force=True)
@@ -44,10 +58,6 @@ class MigrationConfig:
         # Tolerance settings for validation
         self.rtol = float(os.environ.get('QSOFITMORE_RTOL', '1e-6'))
         self.atol = float(os.environ.get('QSOFITMORE_ATOL', '1e-8'))
-        # Global override on init: enabling global lmfit turns on per-component flags by default
-        if self._use_lmfit:
-            self.use_lmfit_continuum = True if os.environ.get('QSOFITMORE_USE_LMFIT_CONTINUUM') is None else self.use_lmfit_continuum
-            self.use_lmfit_lines = True if os.environ.get('QSOFITMORE_USE_LMFIT_LINES') is None else self.use_lmfit_lines
 
     @property
     def use_lmfit(self):
@@ -55,33 +65,65 @@ class MigrationConfig:
 
     @use_lmfit.setter
     def use_lmfit(self, value: bool):
-        """Setting global lmfit also cascades to per-component flags at runtime."""
+        """Select lmfit (True) or legacy kmpfit (False) for all fit components."""
         self._use_lmfit = bool(value)
-        if self._use_lmfit:
-            self.use_lmfit_continuum = True
-            self.use_lmfit_lines = True
-        else:
-            self.use_lmfit_continuum = False
-            self.use_lmfit_lines = False
+
+    @property
+    def use_lmfit_continuum(self):
+        """Compatibility alias for ``use_lmfit``."""
+        return self.use_lmfit
+
+    @use_lmfit_continuum.setter
+    def use_lmfit_continuum(self, value: bool):
+        warnings.warn(
+            "use_lmfit_continuum is deprecated; set use_lmfit instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.use_lmfit = bool(value)
+
+    @property
+    def use_lmfit_lines(self):
+        """Compatibility alias for ``use_lmfit``."""
+        return self.use_lmfit
+
+    @use_lmfit_lines.setter
+    def use_lmfit_lines(self, value: bool):
+        warnings.warn(
+            "use_lmfit_lines is deprecated; set use_lmfit instead.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.use_lmfit = bool(value)
+
+    @property
+    def use_lmfit_mc(self):
+        """Compatibility alias for ``use_lmfit``."""
+        return self.use_lmfit
+
+    @use_lmfit_mc.setter
+    def use_lmfit_mc(self, value: bool):
+        warnings.warn(
+            "use_lmfit_mc is deprecated; Monte Carlo uses the active backend selected by use_lmfit.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.use_lmfit = bool(value)
     
     def enable_lmfit_gradually(self):
-        """Enable lmfit components in order of risk (lowest first)"""
-        if not self.use_lmfit_continuum:
-            self.use_lmfit_continuum = True
-            return 'continuum'
-        elif not self.use_lmfit_lines:
-            self.use_lmfit_lines = True
-            return 'lines'
-        elif not self.use_lmfit_mc:
-            self.use_lmfit_mc = True
-            return 'monte_carlo'
-        else:
-            self.use_lmfit = True
-            return 'complete'
+        """Compatibility shim for the completed migration."""
+        warnings.warn(
+            "enable_lmfit_gradually is deprecated; lmfit is controlled by use_lmfit.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        self.use_lmfit = True
+        return 'complete'
     
     def status(self):
-        """Return current migration status"""
+        """Return current runtime status."""
         return {
+            'backend': 'lmfit' if self.use_lmfit else 'kmpfit',
             'global_lmfit': self.use_lmfit,
             'continuum_fitting': self.use_lmfit_continuum,
             'line_fitting': self.use_lmfit_lines,
@@ -102,14 +144,14 @@ class MigrationConfig:
         """
         if force or 'QSOFITMORE_WAVE_SCALE' in os.environ:
             wave_scale = os.environ.get('QSOFITMORE_WAVE_SCALE', self.wave_scale).strip().lower()
-            self.wave_scale = wave_scale if wave_scale in ('log', 'linear') else 'log'
+            self.wave_scale = wave_scale if wave_scale in ('auto', 'log', 'linear') else 'auto'
 
         if force or 'QSOFITMORE_VELOCITY_UNITS' in os.environ:
             velocity_units = os.environ.get('QSOFITMORE_VELOCITY_UNITS', self.velocity_units).strip().lower()
             if velocity_units in ('kms', 'km/s', 'kmps'):
                 self.velocity_units = 'km/s'
-            elif velocity_units == 'lnlambda':
-                self.velocity_units = 'lnlambda'
+            elif velocity_units in ('auto', 'lnlambda'):
+                self.velocity_units = velocity_units
 
         if force or 'QSOFITMORE_NARROW_MAX_KMS' in os.environ:
             try:

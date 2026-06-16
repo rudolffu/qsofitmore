@@ -1,132 +1,61 @@
 #!/usr/bin/env python
-"""Tests for continuum fitting functionality during kmpfit->lmfit migration"""
+"""Tests for continuum optimizer backend behavior."""
 
-import pytest
 import numpy as np
+import pytest
 
-# Try to import qsofitmore config, skip tests if not available
-try:
-    from qsofitmore.config import migration_config
-    QSOFITMORE_AVAILABLE = True
-except ImportError:
-    QSOFITMORE_AVAILABLE = False
-    # Create dummy config for testing
-    class DummyConfig:
-        validate_against_kmpfit = False
-        benchmark_performance = False
-        rtol = 1e-6
-        atol = 1e-8
-    migration_config = DummyConfig()
+from qsofitmore import QSOFitNew
+from qsofitmore.config import migration_config
+import qsofitmore.fitmodule as fitmodule
 
 
-class TestContinuumFitting:
-    """Test continuum fitting with both kmpfit and lmfit"""
-    
-    def test_continuum_basic_fit(self, qso_instance):
-        """Test basic continuum fitting functionality"""
-        q = qso_instance
-        
-        # Mock a simple continuum fitting call
-        # This would test the actual fitting once implemented
-        assert q is not None
-        assert hasattr(q, 'wave')
-        assert hasattr(q, 'flux')
-        assert hasattr(q, 'err')
-    
-    def test_continuum_parameter_bounds(self, qso_instance):
-        """Test that parameter bounds are respected"""
-        q = qso_instance
-        
-        # Test parameter bound handling
-        # This will be expanded once the lmfit implementation is in place
-        pass
-    
-    def test_continuum_convergence(self, qso_instance):
-        """Test that continuum fitting converges properly"""
-        q = qso_instance
-        
-        # Test convergence properties
-        pass
-    
-    @pytest.mark.parametrize("broken_pl", [True, False])
-    def test_continuum_broken_powerlaw(self, qso_instance, broken_pl):
-        """Test continuum fitting with and without broken power law"""
-        q = qso_instance
-        q.broken_pl = broken_pl
-        
-        # Test broken power law functionality
-        # This will test both kmpfit and lmfit implementations when available
-        pass
-    
-    def test_continuum_residuals_calculation(self, qso_instance):
-        """Test residual calculation for continuum fitting"""
-        q = qso_instance
-        
-        # Mock residual calculation
-        wave = q.wave[:100]  # Subset for testing
-        flux = q.flux[:100]
-        err = q.err[:100]
-        
-        # Test residual function
-        # This will need to be updated with actual residual functions
-        assert len(wave) == len(flux) == len(err)
-    
-    def test_continuum_chi2_calculation(self, qso_instance):
-        """Test chi-square calculation"""
-        q = qso_instance
-        
-        # Test chi-square calculation for goodness of fit
-        pass
-    
-    @pytest.mark.benchmark
-    def test_continuum_performance(self, qso_instance, benchmark):
-        """Benchmark continuum fitting performance"""
-        if not migration_config.benchmark_performance:
-            pytest.skip("Benchmarking disabled")
-        
-        q = qso_instance
-        
-        def run_continuum_fit():
-            # This will be the actual fitting call
-            # For now, just a placeholder
-            return np.sum(q.flux)
-        
-        # Benchmark the fitting
-        result = benchmark(run_continuum_fit)
-        assert result > 0
+def _basic_qso():
+    wave = np.linspace(4200.0, 5200.0, 120)
+    flux = 2.0 * (wave / 3000.0) ** -1.2
+    err = np.full_like(wave, 0.1)
+    q = QSOFitNew(wave, flux, err, z=0.0)
+    q.include_iron = False
+    q.BC = False
+    q.poly = False
+    q.broken_pl = False
+    q.iron_temp_name = "BG92-VW01"
+    return q, wave, flux, err
 
 
-class TestContinuumValidation:
-    """Validation tests comparing kmpfit and lmfit results"""
-    
-    def test_kmpfit_lmfit_parameter_agreement(self, qso_instance, reference_fit_results):
-        """Test that kmpfit and lmfit produce consistent parameters"""
-        if not migration_config.validate_against_kmpfit:
-            pytest.skip("kmpfit validation disabled")
-        
-        q = qso_instance
-        
-        # This will run both kmpfit and lmfit on the same data
-        # and compare results within tolerance
-        
-        # Placeholder for actual implementation
-        kmpfit_params = reference_fit_results['continuum_params']
-        # lmfit_params = run_lmfit_continuum(q)
-        
-        # np.testing.assert_allclose(kmpfit_params, lmfit_params, 
-        #                           rtol=migration_config.rtol, 
-        #                           atol=migration_config.atol)
-        pass
-    
-    def test_chi2_agreement(self, qso_instance, reference_fit_results):
-        """Test that chi-square values are consistent"""
-        if not migration_config.validate_against_kmpfit:
-            pytest.skip("kmpfit validation disabled")
-            
-        # Test chi-square consistency
-        pass
-    
-    def test_error_estimation_consistency(self, qso_instance):
-        """Test that error estimates are consistent between methods"""
-        # Test error estimation consistency
-        pass
+def test_lmfit_continuum_helper_runs_without_kapteyn(monkeypatch):
+    """The default lmfit path should not need the optional Kapteyn backend."""
+    q, wave, flux, err = _basic_qso()
+    monkeypatch.setattr(fitmodule, "_kmpfit", None)
+    monkeypatch.setattr(q, "Fe_flux_mgii", lambda x, pp: np.zeros_like(x))
+    monkeypatch.setattr(q, "Fe_flux_balmer", lambda x, pp: np.zeros_like(x))
+    monkeypatch.setattr(q, "Fe_flux_verner", lambda x, pp: np.zeros_like(x))
+    monkeypatch.setattr(q, "Fe_flux_g12", lambda x, pp: np.zeros_like(x))
+    monkeypatch.setattr(q, "Balmer_conti", lambda x, pp: np.zeros_like(x))
+    monkeypatch.setattr(q, "Balmer_high_order", lambda x, pp: np.zeros_like(x))
+
+    pp0 = np.array([0., 3000., 0., 0., 3000., 0., 1., -1.0, 0., 5000., 0., 0., 0., 0.])
+    bounds = [None] * len(pp0)
+    result = q._fit_continuum_lmfit(wave, flux, err, pp0, bounds)
+
+    assert result.success
+    assert len(result.params) == len(pp0)
+    assert np.all(np.isfinite(result.params))
+
+
+def test_use_lmfit_false_selects_legacy_backend_and_requires_kapteyn(monkeypatch):
+    """The single public backend switch should route all fitting to kmpfit."""
+    q, wave, flux, err = _basic_qso()
+    old_backend = migration_config.use_lmfit
+    monkeypatch.setattr(fitmodule, "_kmpfit", None)
+    migration_config.use_lmfit = False
+    q.initial_guess = None
+    q.Fe_flux_range = None
+    q.MC = False
+    q.n_trails = 0
+    q.flux_prereduced = flux
+    q.err_prereduced = err
+    try:
+        with pytest.raises(ImportError, match="kapteyn is required"):
+            q._DoContiFit(wave, flux, err, 0.0, 0.0, 0, 0, 0)
+    finally:
+        migration_config.use_lmfit = old_backend
