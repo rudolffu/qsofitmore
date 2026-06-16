@@ -29,21 +29,13 @@ class MigrationConfig:
         
         # Wavelength axis and velocity-param units
         # wave_scale: 'log' (default, legacy) or 'linear'
-        self.wave_scale = os.environ.get('QSOFITMORE_WAVE_SCALE', 'log').strip().lower()
-        if self.wave_scale not in ('log', 'linear'):
-            self.wave_scale = 'log'
+        self.wave_scale = 'log'
         # velocity_units: how to interpret inisig/minsig/maxsig/voff in line tables
         # 'lnlambda' (default, legacy) or 'km/s'
-        self.velocity_units = os.environ.get('QSOFITMORE_VELOCITY_UNITS', 'lnlambda').strip().lower()
-        if self.velocity_units in ('kms', 'km/s', 'kmps'):
-            self.velocity_units = 'km/s'
-        elif self.velocity_units != 'lnlambda':
-            self.velocity_units = 'lnlambda'
+        self.velocity_units = 'lnlambda'
         # Max width for narrow components, in km/s (default 1200)
-        try:
-            self.narrow_max_kms = float(os.environ.get('QSOFITMORE_NARROW_MAX_KMS', '1200'))
-        except Exception:
-            self.narrow_max_kms = 1200.0
+        self.narrow_max_kms = 1200.0
+        self.refresh_axis_from_env(force=True)
         
         # Testing and validation flags
         self.validate_against_kmpfit = os.environ.get('QSOFITMORE_VALIDATE_KMPFIT', 'true').lower() == 'true'
@@ -100,6 +92,30 @@ class MigrationConfig:
             'velocity_units': self.velocity_units,
             'narrow_max_kms': self.narrow_max_kms,
         }
+
+    def refresh_axis_from_env(self, force=False):
+        """Refresh axis/unit settings from environment variables.
+
+        When ``force`` is false, only variables present in the environment are
+        applied. This lets notebooks set env vars after importing qsofitmore
+        without clobbering explicit in-Python config edits.
+        """
+        if force or 'QSOFITMORE_WAVE_SCALE' in os.environ:
+            wave_scale = os.environ.get('QSOFITMORE_WAVE_SCALE', self.wave_scale).strip().lower()
+            self.wave_scale = wave_scale if wave_scale in ('log', 'linear') else 'log'
+
+        if force or 'QSOFITMORE_VELOCITY_UNITS' in os.environ:
+            velocity_units = os.environ.get('QSOFITMORE_VELOCITY_UNITS', self.velocity_units).strip().lower()
+            if velocity_units in ('kms', 'km/s', 'kmps'):
+                self.velocity_units = 'km/s'
+            elif velocity_units == 'lnlambda':
+                self.velocity_units = 'lnlambda'
+
+        if force or 'QSOFITMORE_NARROW_MAX_KMS' in os.environ:
+            try:
+                self.narrow_max_kms = float(os.environ.get('QSOFITMORE_NARROW_MAX_KMS', self.narrow_max_kms))
+            except Exception:
+                self.narrow_max_kms = 1200.0
 
 
 # Global migration configuration instance
