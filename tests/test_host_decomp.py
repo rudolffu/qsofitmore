@@ -17,6 +17,7 @@ from qsofitmore.host_decomp.ppxf_host import (
     make_emission_line_mask,
     prepare_desi_for_host_decomp,
     predict_host_sed,
+    predict_host_sed_on_grid,
     write_host_decomp_outputs,
     _require_ppxf,
 )
@@ -94,6 +95,24 @@ def test_host_sed_sampling_does_not_extrapolate():
     assert np.isnan(sed.samples["fHost_1p6um"])
     assert sed.flags["template_covers_1um"]
     assert not sed.flags["template_covers_1p6um"]
+
+
+def test_host_sed_prediction_on_quasar_grid_no_extrapolation():
+    sed = HostSED(
+        wave_rest=np.array([4000.0, 5000.0, 6000.0]),
+        host_flux=np.array([1.0, 2.0, 3.0]),
+        samples={},
+        flags={},
+        warnings=[],
+    )
+    grid = np.array([3500.0, 4500.0, 5500.0, 6500.0])
+
+    host, warnings = predict_host_sed_on_grid(sed, grid)
+
+    assert np.isnan(host[0])
+    assert np.isnan(host[-1])
+    np.testing.assert_allclose(host[1:3], [1.5, 2.5])
+    assert "host_sed_grid_outside_template_coverage" in warnings
 
 
 def test_desi_diagnostic_host_sed_prediction_is_outside_ppxf_fit():

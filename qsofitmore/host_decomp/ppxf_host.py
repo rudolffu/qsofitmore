@@ -376,6 +376,21 @@ def predict_host_sed(fit: PPXFHostFitResult) -> HostSED:
     )
 
 
+def predict_host_sed_on_grid(sed: HostSED, wave_rest: np.ndarray) -> Tuple[np.ndarray, List[str]]:
+    """Evaluate a template-weighted host SED on a target rest-frame grid.
+
+    No extrapolation is performed. Pixels outside template coverage are returned
+    as NaN so callers can exclude them from host-subtracted fitting.
+    """
+
+    wave = np.asarray(wave_rest, dtype=float)
+    host = np.interp(wave, sed.wave_rest, sed.host_flux, left=np.nan, right=np.nan)
+    warnings_out: List[str] = []
+    if np.any(~np.isfinite(host)):
+        warnings_out.append("host_sed_grid_outside_template_coverage")
+    return host, warnings_out
+
+
 def _write_csv(path: Path, data: Dict[str, Any]) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     pd.DataFrame(data).to_csv(path, index=False)

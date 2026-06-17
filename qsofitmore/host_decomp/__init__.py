@@ -14,6 +14,7 @@ from .ppxf_host import (
     PreprocessedSpectrum,
     prepare_desi_for_host_decomp,
     predict_host_sed,
+    predict_host_sed_on_grid,
     run_ppxf_host_fit,
     run_ppxf_qsofitmore_decomposition,
 )
@@ -32,6 +33,7 @@ __all__ = [
     "prepare_desi_for_host_decomp",
     "predict_host_for_euclid_spectrum",
     "predict_host_sed",
+    "predict_host_sed_on_grid",
     "read_sparcli_spectrum",
     "run_ppxf_host_fit",
     "run_ppxf_qsofitmore_decomposition",
