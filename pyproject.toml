@@ -56,8 +56,10 @@ Documentation = "https://github.com/rudolffu/qsofitmore/blob/main/README.md"
 "Bug Tracker" = "https://github.com/rudolffu/qsofitmore/issues"
 
 [tool.setuptools]
-packages = ["qsofitmore"]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["qsofitmore*"]
 
 [tool.setuptools.package-data]
 qsofitmore = ["data/**/*"]

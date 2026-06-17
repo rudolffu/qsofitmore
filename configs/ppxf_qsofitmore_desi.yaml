@@ -1,0 +1,30 @@
+template_root: ~/tools/ppxf_data
+template_file: spectra_emiles_9.0.npz
+template_family: emiles
+fit_range: [3600, 7000]
+line_mask_widths:
+  default: 800
+  MgII: 1800
+  Hdelta: 1400
+  Hgamma: 1400
+  Hbeta: 1800
+  Halpha: 2200
+broad_line_mask_widths:
+  default: 1200
+  MgII: 3500
+  Hdelta: 2600
+  Hgamma: 2600
+  Hbeta: 3500
+  Halpha: 4500
+polynomial_degree: 4
+multiplicative_polynomial_degree: 0
+use_regularization: false
+agn_powerlaw_slopes: [-2.0, -1.5, -1.0, -0.5, 0.0]
+run_qsofitmore: false
+n_iterations: 1
+euclid_scaling_mode: free_scale
+continuum_windows:
+  - [4100, 4300]
+  - [5200, 5600]
+  - [6000, 6200]
+output_dir: outputs/ppxf_qsofitmore
