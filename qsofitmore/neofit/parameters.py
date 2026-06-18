@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-from .config import GaussianComponent, LineComplexConfig
+from .config import GaussianComponent, LineComplexConfig, LorentzianComponent
 from .templates.iron import IronTemplate
 
 
@@ -19,6 +19,8 @@ class ComponentIndex:
     amp: int
     center: int
     sigma: int
+    profile: str = "gaussian"
+    width_name: str = "sigma"
 
 
 @dataclass(frozen=True)
@@ -50,7 +52,7 @@ class PackedParameters:
         return {name: float(theta[i]) for i, name in enumerate(self.names)}
 
 
-def _bound(component: GaussianComponent, field_name: str, default: Tuple[float, float]) -> Tuple[float, float]:
+def _bound(component, field_name: str, default: Tuple[float, float]) -> Tuple[float, float]:
     lo, hi = component.bounds.get(field_name, default)
     lo = -np.inf if lo is None else float(lo)
     hi = np.inf if hi is None else float(hi)
@@ -91,7 +93,10 @@ def pack_line_complex_parameters(
     for component in config.components:
         amp_lo, amp_hi = _bound(component, "amp", (-np.inf, np.inf))
         center_lo, center_hi = _bound(component, "center", (-np.inf, np.inf))
-        sigma_lo, sigma_hi = _bound(component, "sigma", (1.0e-12, np.inf))
+        is_lorentzian = isinstance(component, LorentzianComponent)
+        width_name = "gamma" if is_lorentzian else "sigma"
+        width_value = component.gamma if is_lorentzian else component.sigma
+        width_lo, width_hi = _bound(component, width_name, (1.0e-12, np.inf))
 
         amp_idx = len(names)
         names.append(f"{component.name}.amp")
@@ -105,13 +110,22 @@ def pack_line_complex_parameters(
         lower.append(center_lo)
         upper.append(center_hi)
 
-        sigma_idx = len(names)
-        names.append(f"{component.name}.sigma")
-        initial.append(_clip_initial(component.sigma, sigma_lo, sigma_hi))
-        lower.append(sigma_lo)
-        upper.append(sigma_hi)
+        width_idx = len(names)
+        names.append(f"{component.name}.{width_name}")
+        initial.append(_clip_initial(width_value, width_lo, width_hi))
+        lower.append(width_lo)
+        upper.append(width_hi)
 
-        components.append(ComponentIndex(component.name, amp_idx, center_idx, sigma_idx))
+        components.append(
+            ComponentIndex(
+                component.name,
+                amp_idx,
+                center_idx,
+                width_idx,
+                profile="lorentzian" if is_lorentzian else "gaussian",
+                width_name=width_name,
+            )
+        )
 
     wave_fit = np.asarray(wave_fit, dtype=float)
     wave_ref = float(config.center)
