@@ -101,30 +101,37 @@ class FitResult:
             {
                 name.rsplit(".", 1)[0]
                 for name in self.param_values
-                if name.endswith((".amp", ".center", ".sigma"))
+                if name.endswith((".amp", ".center", ".sigma", ".gamma"))
             }
         )
         for component in component_names:
+            width_key = (
+                f"{component}.sigma"
+                if f"{component}.sigma" in self.param_values
+                else f"{component}.gamma"
+            )
             keys = {
                 "amp": f"{component}.amp",
                 "center": f"{component}.center",
-                "sigma": f"{component}.sigma",
+                "width": width_key,
             }
             if not all(key in self.param_values for key in keys.values()):
                 continue
             amp = float(self.param_values[keys["amp"]])
             center = float(self.param_values[keys["center"]])
-            sigma = float(self.param_values[keys["sigma"]])
-            line_flux_input = amp * sigma * _GAUSSIAN_FLUX_FACTOR
+            width = float(self.param_values[keys["width"]])
+            is_lorentzian = width_key.endswith(".gamma")
+            line_flux_input = amp * width * (np.pi if is_lorentzian else _GAUSSIAN_FLUX_FACTOR)
             line_flux_cgs = line_flux_input * float(scale) if scale is not None else np.nan
             rows.append(
                 {
                     "name": component,
-                    "component_type": "gaussian",
+                    "component_type": "lorentzian" if is_lorentzian else "gaussian",
                     "amp": amp,
                     "center": center,
-                    "sigma": sigma,
-                    "fwhm": sigma * _GAUSSIAN_FWHM_FACTOR,
+                    "sigma": np.nan if is_lorentzian else width,
+                    "gamma": width if is_lorentzian else np.nan,
+                    "fwhm": width * (2.0 if is_lorentzian else _GAUSSIAN_FWHM_FACTOR),
                     "line_flux_input": line_flux_input,
                     "line_flux_cgs": line_flux_cgs,
                     "flux_density_unit": flux_unit,

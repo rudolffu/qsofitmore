@@ -8,6 +8,7 @@ import numpy as np
 
 from .models.continuum import continuum
 from .models.gaussian import gaussian
+from .models.lorentzian import lorentzian
 from .parameters import PackedParameters
 from .templates.iron import evaluate_iron_basis
 
@@ -35,7 +36,8 @@ def model_vector(theta: np.ndarray, packed: PackedParameters, wave: np.ndarray) 
     wave = np.asarray(wave, dtype=float)
     model = np.zeros_like(wave, dtype=float)
     for component in packed.components:
-        model += gaussian(wave, theta[component.amp], theta[component.center], theta[component.sigma])
+        profile = lorentzian if component.profile == "lorentzian" else gaussian
+        model += profile(wave, theta[component.amp], theta[component.center], theta[component.sigma])
     iron_basis = iron_basis_vector(theta, packed, wave)
     if iron_basis is not None:
         model += theta[packed.iron_index] * iron_basis
@@ -52,7 +54,10 @@ def model_components(theta: np.ndarray, packed: PackedParameters, wave: np.ndarr
     wave = np.asarray(wave, dtype=float)
     components: Dict[str, np.ndarray] = {}
     for component in packed.components:
-        components[component.name] = gaussian(wave, theta[component.amp], theta[component.center], theta[component.sigma])
+        profile = lorentzian if component.profile == "lorentzian" else gaussian
+        components[component.name] = profile(
+            wave, theta[component.amp], theta[component.center], theta[component.sigma]
+        )
     iron_basis = iron_basis_vector(theta, packed, wave)
     if iron_basis is not None:
         components["iron"] = theta[packed.iron_index] * iron_basis
