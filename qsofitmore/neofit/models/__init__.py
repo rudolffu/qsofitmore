@@ -10,3 +10,6 @@ __all__ = [
     "gaussian_partials",
     "normalized_coordinate",
 ]
+from .lorentzian import lorentzian, lorentzian_partials
+
+__all__ = ["lorentzian", "lorentzian_partials"]
