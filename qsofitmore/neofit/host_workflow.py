@@ -2,13 +2,22 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import Any, Dict, Optional, Tuple
 
 import numpy as np
 
 from .api import fit_local
-from .config import LocalFitConfig
+from .config import (
+    GlobalContinuumConfig,
+    HalphaComplexConfig,
+    HbetaComplexConfig,
+    LocalFitConfig,
+    MgIIComplexConfig,
+    UncertaintyConfig,
+)
+from .global_fit import fit_global_hbeta, fit_global_lines
+from .global_result import NeoFitWorkflowResult
 from .result import LocalFitResult
 from .spectrum import Spectrum
 
@@ -142,7 +151,7 @@ def _host_subtracted_spectrum(
 
 def fit_with_optional_host_decomp(
     input_path: str,
-    local_config: LocalFitConfig,
+    local_config: Optional[LocalFitConfig] = None,
     *,
     row_index: Optional[int] = None,
     redshift: Optional[float] = None,
@@ -153,15 +162,38 @@ def fit_with_optional_host_decomp(
     template_file: str = "spectra_emiles_9.0.npz",
     host_fit_range: Tuple[float, float] = (3600.0, 7000.0),
     host_config: Optional[Any] = None,
-) -> NeoFitHostWorkflowResult:
+    global_config: Optional[GlobalContinuumConfig] = None,
+    hbeta_config: Optional[HbetaComplexConfig] = None,
+    mgii_config: Optional[MgIIComplexConfig] = None,
+    halpha_config: Optional[HalphaComplexConfig] = None,
+    uncertainty_config: Optional[UncertaintyConfig] = None,
+):
     """Read a spectrum, optionally subtract a pPXF host, then run neofit.
 
-    ``fit_kind="global"`` is reserved for the future global neofit model and
-    raises ``NotImplementedError`` for now.
+    ``fit_kind`` may be ``"local"`` or ``"global"``.
     """
 
+    if fit_kind == "global":
+        return fit_global_lines_workflow(
+            input_path,
+            row_index=row_index,
+            redshift=redshift,
+            object_id=object_id,
+            run_host_decomp=run_host_decomp,
+            template_root=template_root,
+            template_file=template_file,
+            host_fit_range=host_fit_range,
+            host_config=host_config,
+            global_config=global_config,
+            hbeta_config=hbeta_config,
+            mgii_config=mgii_config,
+            halpha_config=halpha_config,
+            uncertainty_config=uncertainty_config,
+        )
     if fit_kind != "local":
-        raise NotImplementedError("Only fit_kind='local' is implemented; global neofit fitting is pending.")
+        raise ValueError("fit_kind must be 'local' or 'global'.")
+    if local_config is None:
+        raise ValueError("local_config is required when fit_kind='local'.")
 
     from qsofitmore.host_decomp.io import read_sparcli_spectrum
 
@@ -209,4 +241,204 @@ def fit_with_optional_host_decomp(
         host_subtracted_flux=host_subtracted_flux,
         host_warnings=host_warnings,
         metadata=metadata,
+    )
+
+
+def _summarize_mc_results(samples: Dict[str, list], n_requested: int, n_success: int) -> Dict[str, Any]:
+    percentiles = {}
+    for name, values in samples.items():
+        finite = np.asarray(values, dtype=float)
+        finite = finite[np.isfinite(finite)]
+        if finite.size:
+            p16, p50, p84 = np.percentile(finite, [16.0, 50.0, 84.0])
+            percentiles[name] = {"p16": float(p16), "p50": float(p50), "p84": float(p84)}
+    return {"n_requested": int(n_requested), "n_success": int(n_success), "percentiles": percentiles}
+
+
+def _run_host_refit_mc(
+    spectrum_data: Any,
+    *,
+    n_trials: int,
+    seed: Optional[int],
+    redshift: Optional[float],
+    template_root: str,
+    template_file: str,
+    host_fit_range: Tuple[float, float],
+    host_config: Optional[Any],
+    source: str,
+    global_config: Optional[GlobalContinuumConfig],
+    hbeta_config: Optional[HbetaComplexConfig],
+    mgii_config: Optional[MgIIComplexConfig],
+    halpha_config: Optional[HalphaComplexConfig],
+) -> Dict[str, Any]:
+    rng = np.random.default_rng(seed)
+    samples: Dict[str, list] = {}
+    successes = 0
+    error = np.asarray(spectrum_data.uncertainty(), dtype=float)
+    for _ in range(int(n_trials)):
+        noisy_data = replace(
+            spectrum_data,
+            flux=np.asarray(spectrum_data.flux, dtype=float) + rng.normal(0.0, error),
+        )
+        try:
+            _, fit_spectrum, _, _, host_on_grid, _, _ = _host_subtracted_spectrum(
+                noisy_data,
+                redshift=redshift,
+                template_root=template_root,
+                template_file=template_file,
+                fit_range=host_fit_range,
+                host_config=host_config,
+                source=source,
+            )
+            trial = fit_global_lines(
+                fit_spectrum,
+                global_config,
+                hbeta_config,
+                mgii_config,
+                halpha_config,
+                UncertaintyConfig(monte_carlo_trials=0),
+                host_model_on_grid=host_on_grid,
+            )
+            if not trial.success:
+                continue
+            successes += 1
+            values = dict(trial.continuum.param_values)
+            for complex_result in trial.line_complexes.values():
+                values.update(complex_result.metrics)
+            for name, value in values.items():
+                if np.isfinite(value):
+                    samples.setdefault(name, []).append(float(value))
+        except Exception:
+            continue
+    return _summarize_mc_results(samples, n_trials, successes)
+
+
+def fit_global_lines_workflow(
+    input_path: str,
+    *,
+    row_index: Optional[int] = None,
+    redshift: Optional[float] = None,
+    object_id: Optional[str] = None,
+    run_host_decomp: bool = False,
+    template_root: str = "~/tools/ppxf_data",
+    template_file: str = "spectra_emiles_9.0.npz",
+    host_fit_range: Tuple[float, float] = (3600.0, 7000.0),
+    host_config: Optional[Any] = None,
+    global_config: Optional[GlobalContinuumConfig] = None,
+    hbeta_config: Optional[HbetaComplexConfig] = None,
+    mgii_config: Optional[MgIIComplexConfig] = None,
+    halpha_config: Optional[HalphaComplexConfig] = None,
+    uncertainty_config: Optional[UncertaintyConfig] = None,
+) -> NeoFitWorkflowResult:
+    """Read one spectrum and run optional pPXF plus global multi-line neofit."""
+
+    from qsofitmore.host_decomp.io import read_sparcli_spectrum
+
+    uncertainty = uncertainty_config or UncertaintyConfig()
+    spectrum_data = read_sparcli_spectrum(
+        input_path, row_index=row_index, redshift=redshift, object_id=object_id
+    )
+    source = f"{input_path}:row_index={row_index}"
+    if run_host_decomp:
+        total_spectrum, fit_spectrum, host_fit, host_sed, host_on_grid, _, host_warnings = (
+            _host_subtracted_spectrum(
+                spectrum_data,
+                redshift=redshift,
+                template_root=template_root,
+                template_file=template_file,
+                fit_range=host_fit_range,
+                host_config=host_config,
+                source=source,
+            )
+        )
+        primary_uncertainty = (
+            replace(uncertainty, monte_carlo_trials=0)
+            if uncertainty.monte_carlo_trials > 0 and uncertainty.refit_host_in_mc
+            else uncertainty
+        )
+    else:
+        total_spectrum = _spectrum_from_spectrum_data(spectrum_data, source=source)
+        fit_spectrum = total_spectrum
+        host_fit = None
+        host_sed = None
+        host_on_grid = None
+        host_warnings = []
+        primary_uncertainty = uncertainty
+
+    workflow = fit_global_lines(
+        fit_spectrum,
+        global_config,
+        hbeta_config,
+        mgii_config,
+        halpha_config,
+        primary_uncertainty,
+        host_model_on_grid=host_on_grid,
+    )
+    workflow.host_decomp_enabled = bool(run_host_decomp)
+    workflow.total_spectrum = total_spectrum
+    workflow.host_fit = host_fit
+    workflow.host_sed = host_sed
+    workflow.host_model_on_quasar_grid = host_on_grid
+    workflow.host_warnings = [str(item) for item in host_warnings]
+    workflow.metadata.update(
+        {
+            "input_path": input_path,
+            "row_index": row_index,
+            "object_id": object_id or spectrum_data.object_id or spectrum_data.targetid,
+            "redshift": fit_spectrum.z,
+            "fit_kind": "global",
+            "host_decomp_enabled": bool(run_host_decomp),
+            "host_model_source": "template_weighted_sed_on_quasar_grid" if run_host_decomp else None,
+        }
+    )
+    if run_host_decomp and uncertainty.monte_carlo_trials > 0 and uncertainty.refit_host_in_mc:
+        workflow.monte_carlo = _run_host_refit_mc(
+            spectrum_data,
+            n_trials=uncertainty.monte_carlo_trials,
+            seed=uncertainty.random_seed,
+            redshift=redshift,
+            template_root=template_root,
+            template_file=template_file,
+            host_fit_range=host_fit_range,
+            host_config=host_config,
+            source=source,
+            global_config=global_config,
+            hbeta_config=hbeta_config,
+            mgii_config=mgii_config,
+            halpha_config=halpha_config,
+        )
+        workflow.metadata["uncertainty_mode"] = "covariance+monte_carlo_host_refit"
+    return workflow
+
+
+def fit_global_hbeta_workflow(
+    input_path: str,
+    *,
+    row_index: Optional[int] = None,
+    redshift: Optional[float] = None,
+    object_id: Optional[str] = None,
+    run_host_decomp: bool = False,
+    template_root: str = "~/tools/ppxf_data",
+    template_file: str = "spectra_emiles_9.0.npz",
+    host_fit_range: Tuple[float, float] = (3600.0, 7000.0),
+    host_config: Optional[Any] = None,
+    global_config: Optional[GlobalContinuumConfig] = None,
+    hbeta_config: Optional[HbetaComplexConfig] = None,
+    uncertainty_config: Optional[UncertaintyConfig] = None,
+) -> NeoFitWorkflowResult:
+    """Compatibility wrapper for :func:`fit_global_lines_workflow`."""
+
+    return fit_global_lines_workflow(
+        input_path,
+        row_index=row_index,
+        redshift=redshift,
+        object_id=object_id,
+        run_host_decomp=run_host_decomp,
+        template_root=template_root,
+        template_file=template_file,
+        host_fit_range=host_fit_range,
+        host_config=host_config,
+        global_config=global_config,
+        hbeta_config=hbeta_config,
+        uncertainty_config=uncertainty_config,
     )
