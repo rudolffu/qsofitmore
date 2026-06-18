@@ -92,8 +92,8 @@ succeed.
 
 The standard QA product remains named `diagnostic_global_continuum.png`. Its
 top row is a full-spectrum overview limited to the valid wavelength minimum and
-maximum; up to three covered complexes share equally sized columns in the
-second row. The canvas remains `15.3 x 6.2` inches regardless of the number of
+maximum; up to four covered complexes share equally sized columns in the
+second row. The canvas remains `10.5 x 6.2` inches regardless of the number of
 zoom panels. H-beta, Mg II, and H-alpha have selection priority and are
 displayed in wavelength order.
 The overview shows each summed broad profile with one common style and one
@@ -113,6 +113,9 @@ Rendering can be customized without changing product names:
 qa_config = neofit.GlobalQAPlotConfig(
     show_smoothed_data=True,
     smoothing_window_pixels=7,
+    show_host_context_in_overview=True,
+    object_name="Example quasar",
+    object_label="Source",
 )
 neofit.write_global_line_products(
     result,
@@ -122,7 +125,31 @@ neofit.write_global_line_products(
 ```
 
 The optional smoothed trace is a mask-aware running median and is disabled by
-default.
+default. When `show_host_context_in_overview=True` and host decomposition is
+available, the overview uses the original spectrum, plots the host galaxy, and
+adds the host contribution to the displayed full model and total continuum.
+The line-complex zoom panels remain on the host-subtracted spectrum. If no host
+model is available, the overview transparently retains its standard
+host-subtracted presentation.
+
+DESI workflow titles use `DESI TARGETID` automatically and include available
+RA and Dec coordinates. `object_name` replaces the catalog identifier,
+`object_label` changes its displayed prefix, and `show_coordinates=False`
+suppresses the coordinates. Continuum subcomponents use thin solid curves with
+distinct colors for print clarity; the overview and zoom panels use the same
+`full continuum` curve and label.
+
+The multi-panel QA figure uses one shared wavelength label and one shared flux
+density label at the figure level. Individual panels omit repeated axis labels,
+allowing larger publication-oriented tick, title, annotation, and legend text.
+
+When pPXF host subtraction is enabled, product writing also creates
+`diagnostic_global_host_context.png`. This fixed-width companion figure shows
+the original spectrum, host galaxy, and reconstructed total model in its upper
+panel, and the host-subtracted spectrum with the final AGN plus emission-line
+model below. Available host fractions at 3000 and 5100 Angstrom are annotated.
+The primary `diagnostic_global_continuum.png` remains focused on fitting the
+host-subtracted AGN spectrum.
 
 ## neofit vs Legacy QSOFitNew
 

@@ -76,3 +76,6 @@ def test_global_fit_kind_runs_without_host(tmp_path):
 
     assert result.success
     assert result.metadata["fit_kind"] == "global"
+    assert result.metadata["targetid"] == "obj"
+    assert result.metadata["ra"] is None
+    assert result.metadata["dec"] is None

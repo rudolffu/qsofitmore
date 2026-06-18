@@ -19,9 +19,13 @@ from qsofitmore.neofit.global_io import (
     _COMBINED_BROAD_STYLE,
     _CONTINUUM_STYLES,
     _NARROW_STYLE,
+    _WING_STYLE,
+    _annotate_emission_lines,
     _configure_qa_axis,
     _flux_density_axis_label,
     _line_groups,
+    _host_fraction_annotation,
+    _has_host_context,
     _masked_running_median,
     _percentile_limits,
     _plot_qa,
@@ -262,21 +266,24 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
     assert "line_complex_not_covered" in partial.warning_codes()
     assert full.complete_success
     assert files["qa_plot"] == files["global_plot"]
+    assert "host_context_plot" not in files
+    assert full.metadata["host_context_plot_created"] is False
     assert full.metadata["qa_panel_count"] == 4
     assert full.metadata["qa_percentiles"] == [1.0, 99.8]
     assert full.metadata["qa_layout"] == "overview_top_complexes_bottom"
-    assert full.metadata["qa_figure_size_inches"] == [15.3, 6.2]
+    assert full.metadata["qa_figure_size_inches"] == [10.5, 6.2]
     assert full.metadata["qa_displayed_complexes"] == ["mgii", "hbeta", "halpha"]
     assert full.metadata["qa_omitted_complexes"] == []
     assert full.metadata["qa_smoothed_data"] is False
     assert full.metadata["qa_minor_ticks"] is True
     assert full.metadata["qa_tick_direction"] == "in"
     assert full.metadata["qa_overview_title"] == (
-        "Global continuum and emission-line QA — ID synthetic-qa — z=1.2346"
+        "DESI TARGETID synthetic-qa — z=1.2346"
     )
     assert full.metadata["qa_overview_annotation"] == {
         "continuum_reduced_chi2": full.continuum.reduced_chi2,
-        "host_state": "pPXF-subtracted",
+        "host_state": "decomposed with pPXF",
+        "host_fractions": "",
     }
     assert full.metadata["qa_overview_xlim"] == pytest.approx(
         [full.spectrum.wave_rest.min(), full.spectrum.wave_rest.max()]
@@ -321,22 +328,22 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
     assert set(full.metadata["qa_zoom_line_labels"]["mgii"]) == {"Mg II"}
     assert set(full.metadata["qa_zoom_line_labels"]["hbeta"]) == {
         r"H$\beta$",
-        "[O III] 4959",
-        "[O III] 5007",
+        "[O III] 4960",
+        "[O III] 5008",
     }
     assert set(full.metadata["qa_zoom_line_labels"]["halpha"]) == {
-        "[N II] 6548",
+        "[N II] 6550",
         r"H$\alpha$",
-        "[N II] 6584",
-        "[S II] 6716",
-        "[S II] 6731",
+        "[N II] 6585",
+        "[S II] 6718",
+        "[S II] 6733",
     }
     assert set(full.metadata["qa_major_emission_line_labels"]) == {
         "Mg II",
-        "[O II]",
+        "[O II] 3728",
         r"H$\gamma$",
         r"H$\beta$",
-        "[O III]",
+        "[O III] 5008",
         r"H$\alpha$",
     }
     assert {"mgii_measurements_csv", "halpha_measurements_csv"} <= set(files)
@@ -456,9 +463,23 @@ def test_qa_percentiles_and_component_styles():
     assert kinds.count("broad") == 1
     assert set(kinds) <= {"broad", "narrow", "wing"}
     assert _COMBINED_BROAD_STYLE["color"] != _BROAD_COMPONENT_STYLE["color"]
-    assert _COMBINED_BROAD_STYLE["linestyle"] != _BROAD_COMPONENT_STYLE["linestyle"]
+    assert _BROAD_COMPONENT_STYLE["color"] == "#17becf"
+    assert _COMBINED_BROAD_STYLE["linestyle"] == "-"
+    assert _BROAD_COMPONENT_STYLE["linestyle"] == "-"
     assert _NARROW_STYLE["linestyle"] == "-"
+    assert _CONTINUUM_STYLES["balmer_continuum"][0] == "#b8860b"
+    assert _CONTINUUM_STYLES["balmer_continuum"][0] != _NARROW_STYLE["color"]
+    assert _WING_STYLE["color"] == "#b2182b"
+    assert _WING_STYLE["color"] != _CONTINUUM_STYLES["uv_iron"][0]
     assert _CONTINUUM_STYLES["uv_iron"] == _CONTINUUM_STYLES["optical_iron"]
+    assert _CONTINUUM_STYLES["power_law"][0] == "#cc79a7"
+    assert (
+        _CONTINUUM_STYLES["balmer_continuum"]
+        == _CONTINUUM_STYLES["balmer_series"]
+    )
+    assert {
+        style[1] for style in _CONTINUUM_STYLES.values()
+    } == {"-"}
     label = _flux_density_axis_label(
         "1e-17 erg cm^-2 s^-1 Angstrom^-1"
     )
@@ -468,9 +489,9 @@ def test_qa_percentiles_and_component_styles():
 
 def test_qa_plot_config_and_selection_contract(monkeypatch):
     assert neofit.GlobalQAPlotConfig() == neofit.GlobalQAPlotConfig(
-        figure_width=15.3,
+        figure_width=10.5,
         figure_height=6.2,
-        max_zoom_panels=3,
+        max_zoom_panels=4,
         show_smoothed_data=False,
         smoothing_window_pixels=7,
     )
@@ -498,10 +519,27 @@ def test_qa_title_smoothing_and_tick_helpers():
         _simple_global_config(),
         neofit.HbetaComplexConfig(fit_oiii_wings=False),
     )
-    assert _qa_overview_title(result) == "Global continuum and emission-line QA"
-    result.metadata.update({"object_id": "abc", "redshift": 0.75})
+    assert _qa_overview_title(result) == ""
+    result.metadata.update(
+        {
+            "object_id": "abc",
+            "redshift": 0.75,
+            "ra": 151.123456,
+            "dec": -2.345678,
+        }
+    )
     assert _qa_overview_title(result) == (
-        "Global continuum and emission-line QA — ID abc — z=0.7500"
+        "DESI TARGETID abc — z=0.7500 — RA=151.12346 — Dec=-2.34568"
+    )
+    assert _qa_overview_title(
+        result,
+        neofit.GlobalQAPlotConfig(
+            object_name="My Quasar",
+            object_label="Source",
+            show_coordinates=False,
+        ),
+    ) == (
+        "Source My Quasar — z=0.7500"
     )
 
     smoothed = _masked_running_median(
@@ -521,6 +559,28 @@ def test_qa_title_smoothing_and_tick_helpers():
     assert axis.yaxis.get_tick_params(which="major")["right"] is True
     assert not isinstance(axis.xaxis.get_minor_locator(), NullLocator)
     assert not isinstance(axis.yaxis.get_minor_locator(), NullLocator)
+    axis.set_xlim(4800.0, 5050.0)
+    _annotate_emission_lines(
+        axis,
+        (
+            (4862.68, r"H$\beta$"),
+            (4960.30, "[O III] 4960"),
+            (5008.24, "[O III] 5008"),
+        ),
+        y_fraction=0.82,
+    )
+    text_positions = {text.get_text(): text.get_position()[1] for text in axis.texts}
+    assert text_positions[r"H$\beta$"] == pytest.approx(0.82)
+    assert text_positions["[O III] 4960"] == pytest.approx(0.68)
+    assert text_positions["[O III] 5008"] == pytest.approx(0.68)
+    assert all(text.get_color() == "#355f8a" for text in axis.texts)
+    axis.set_xlim(3650.0, 3800.0)
+    _annotate_emission_lines(
+        axis,
+        ((3728.47, "[O II] 3728"),),
+        y_fraction=0.82,
+    )
+    assert axis.texts[-1].get_position()[1] == pytest.approx(0.68)
     plt.close(figure)
 
 
@@ -554,10 +614,12 @@ def test_qa_fixed_dimensions_smoothing_and_legends(tmp_path, monkeypatch):
         _plot_qa(result, path)
         image = plt.imread(path)
         pixel_sizes.add(image.shape[:2])
-    assert pixel_sizes == {(992, 2448)}
-    assert variants["one"].metadata["qa_overview_annotation"]["host_state"] == (
-        "not subtracted"
-    )
+    assert pixel_sizes == {(992, 1680)}
+    assert variants["one"].metadata["qa_overview_annotation"] == {
+        "continuum_reduced_chi2": variants["one"].continuum.reduced_chi2,
+        "host_state": "not decomposed",
+        "host_fractions": "",
+    }
 
     real_close = plt.close
     monkeypatch.setattr(plt, "close", lambda figure: None)
@@ -569,12 +631,108 @@ def test_qa_fixed_dimensions_smoothing_and_legends(tmp_path, monkeypatch):
     )
     figure = plt.gcf()
     overview_axis = figure.axes[0]
+    assert figure._supxlabel.get_text() == r"Rest wavelength [$\mathrm{\AA}$]"
+    assert "f_\\lambda" in figure._supylabel.get_text()
+    assert all(axis.get_xlabel() == "" for axis in figure.axes)
+    assert all(axis.get_ylabel() == "" for axis in figure.axes)
     overview_labels = overview_axis.get_legend_handles_labels()[1]
     assert overview_labels.count("smoothed data") == 1
     assert overview_labels.count("iron") <= 1
     assert overview_labels.count("full broad line") == 1
     assert overview_labels.count("narrow line") == 1
-    for axis in figure.axes[1:]:
-        assert axis.get_legend_handles_labels()[1].count("broad components") == 1
+    assert (
+        figure.axes[1].get_legend_handles_labels()[1].count("broad components")
+        == 1
+    )
+    for axis in figure.axes[2:]:
+        assert "broad components" not in axis.get_legend_handles_labels()[1]
     assert variants["three"].metadata["qa_smoothed_data"] is True
+    assert variants["three"].metadata["qa_shared_axis_labels"] is True
     real_close(figure)
+
+
+def test_host_context_companion_plot(tmp_path, monkeypatch):
+    import matplotlib.pyplot as plt
+
+    result = neofit.fit_global_lines(
+        _global_spectrum(np.linspace(2600.0, 7000.0, 2200)),
+        _simple_global_config(),
+        neofit.HbetaComplexConfig(fit_oiii_wings=False),
+    )
+    host = 0.45 * (result.spectrum.wave_rest / 5100.0) ** -0.4
+    result.host_decomp_enabled = True
+    result.host_model_on_quasar_grid = host
+    result.total_spectrum = neofit.Spectrum.from_arrays(
+        result.spectrum.wave_rest,
+        result.spectrum.flux + host,
+        err=result.spectrum.err,
+        wave_frame="rest",
+        survey="desi",
+    )
+    result.metadata.update(
+        {
+            "object_id": "host-test",
+            "redshift": 0.5,
+            "host_decomp_enabled": True,
+            "continuum_samples": {
+                "fracHost_3000": 0.2,
+                "fracHost_5100": 0.3,
+            },
+        }
+    )
+
+    assert _has_host_context(result)
+    assert "20.0\\%" in _host_fraction_annotation(result)
+    assert "30.0\\%" in _host_fraction_annotation(result)
+    files = neofit.write_global_line_products(result, str(tmp_path))
+
+    assert files["host_context_plot"].endswith(
+        "diagnostic_global_host_context.png"
+    )
+    assert result.metadata["host_context_plot_created"] is True
+    assert result.metadata["host_context_figure_size_inches"] == [10.5, 5.2]
+    assert result.metadata["host_context_ymin"] == 0.0
+    assert result.metadata["host_context_fraction_annotation"]
+    image = plt.imread(files["host_context_plot"])
+    assert image.shape[:2] == (832, 1680)
+
+    real_close = plt.close
+    monkeypatch.setattr(plt, "close", lambda figure: None)
+    qa_path = tmp_path / "qa_with_host_overview.png"
+    _plot_qa(
+        result,
+        qa_path,
+        neofit.GlobalQAPlotConfig(show_host_context_in_overview=True),
+    )
+    figure = plt.gcf()
+    overview_labels = figure.axes[0].get_legend_handles_labels()[1]
+    assert "original spectrum" in overview_labels
+    assert "host galaxy" in overview_labels
+    assert "host + full model" in overview_labels
+    assert "full continuum" in overview_labels
+    assert "host + total continuum" not in overview_labels
+    for axis in figure.axes[1:]:
+        zoom_labels = axis.get_legend_handles_labels()[1]
+        assert "host-subtracted data" in zoom_labels
+        assert "original spectrum" not in zoom_labels
+        assert "host galaxy" not in zoom_labels
+    assert result.metadata["qa_host_context_overview_requested"] is True
+    assert result.metadata["qa_host_context_overview_used"] is True
+    assert "20.0\\%" in result.metadata["qa_overview_annotation"]["host_fractions"]
+    assert "30.0\\%" in result.metadata["qa_overview_annotation"]["host_fractions"]
+    real_close(figure)
+
+
+def test_host_context_overview_falls_back_without_host(tmp_path):
+    result = neofit.fit_global_lines(
+        _global_spectrum(np.linspace(2600.0, 7000.0, 1800)),
+        _simple_global_config(),
+        neofit.HbetaComplexConfig(fit_oiii_wings=False),
+    )
+    _plot_qa(
+        result,
+        tmp_path / "qa_without_host.png",
+        neofit.GlobalQAPlotConfig(show_host_context_in_overview=True),
+    )
+    assert result.metadata["qa_host_context_overview_requested"] is True
+    assert result.metadata["qa_host_context_overview_used"] is False

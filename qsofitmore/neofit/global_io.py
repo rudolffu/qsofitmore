@@ -17,11 +17,15 @@ from .global_result import NeoFitWorkflowResult
 class GlobalQAPlotConfig:
     """Rendering options for the global continuum and emission-line QA plot."""
 
-    figure_width: float = 15.3
+    figure_width: float = 10.5
     figure_height: float = 6.2
-    max_zoom_panels: int = 3
+    max_zoom_panels: int = 4
     show_smoothed_data: bool = False
     smoothing_window_pixels: int = 7
+    show_host_context_in_overview: bool = False
+    object_name: Optional[str] = None
+    object_label: Optional[str] = None
+    show_coordinates: bool = True
 
     def __post_init__(self) -> None:
         if self.figure_width <= 0 or self.figure_height <= 0:
@@ -108,40 +112,42 @@ _SPECIES_COLORS = {
     "NII": "tab:purple",
     "SII": "tab:brown",
 }
-_IRON_STYLE = ("#7570b3", "--")
+_IRON_STYLE = ("#7570b3", "-")
+_BALMER_STYLE = ("#b8860b", "-")
 _CONTINUUM_STYLES = {
-    "power_law": ("#d95f02", ":"),
+    "power_law": ("#cc79a7", "-"),
     "uv_iron": _IRON_STYLE,
     "optical_iron": _IRON_STYLE,
-    "balmer_continuum": ("#66a61e", (0, (5, 2))),
-    "balmer_series": ("#a6761d", (0, (1, 2))),
+    "balmer_continuum": _BALMER_STYLE,
+    "balmer_series": _BALMER_STYLE,
 }
 _COMBINED_BROAD_STYLE = {"color": "#1f77b4", "linestyle": "-", "linewidth": 1.6}
-_BROAD_COMPONENT_STYLE = {"color": "#7f7f7f", "linestyle": "--", "linewidth": 1.15}
+_BROAD_COMPONENT_STYLE = {"color": "#17becf", "linestyle": "-", "linewidth": 0.9}
 _NARROW_STYLE = {"color": "#2ca02c", "linestyle": "-", "linewidth": 1.15}
-_WING_STYLE = {"color": "#9467bd", "linestyle": "-.", "linewidth": 1.15}
+_WING_STYLE = {"color": "#b2182b", "linestyle": "-", "linewidth": 1.0}
+_HOST_STYLE = {"color": "#8c564b", "linestyle": "-", "linewidth": 1.25}
 _MAJOR_EMISSION_LINES = (
     (1908.73, r"C III]"),
     (2798.75, r"Mg II"),
-    (3728.47, r"[O II]"),
+    (3728.47, r"[O II] 3728"),
     (4341.68, r"H$\gamma$"),
     (4862.68, r"H$\beta$"),
-    (5008.24, r"[O III]"),
+    (5008.24, r"[O III] 5008"),
     (6564.61, r"H$\alpha$"),
 )
 _ZOOM_EMISSION_LINES = {
     "mgii": ((2798.75, r"Mg II"),),
     "hbeta": (
         (4862.68, r"H$\beta$"),
-        (4960.30, r"[O III] 4959"),
-        (5008.24, r"[O III] 5007"),
+        (4960.30, r"[O III] 4960"),
+        (5008.24, r"[O III] 5008"),
     ),
     "halpha": (
-        (6549.85, r"[N II] 6548"),
+        (6549.85, r"[N II] 6550"),
         (6564.61, r"H$\alpha$"),
-        (6585.28, r"[N II] 6584"),
-        (6718.29, r"[S II] 6716"),
-        (6732.67, r"[S II] 6731"),
+        (6585.28, r"[N II] 6585"),
+        (6718.29, r"[S II] 6718"),
+        (6732.67, r"[S II] 6733"),
     ),
 }
 _ZOOM_PRIORITY = ("hbeta", "mgii", "halpha")
@@ -250,14 +256,37 @@ def _format_reduced_chi2(value: float) -> str:
     return f"{value:.2f}" if np.isfinite(value) else "n/a"
 
 
-def _qa_overview_title(result: NeoFitWorkflowResult) -> str:
-    parts = ["Global continuum and emission-line QA"]
-    object_id = result.metadata.get("object_id")
-    if object_id not in (None, ""):
-        parts.append(f"ID {object_id}")
+def _qa_overview_title(
+    result: NeoFitWorkflowResult,
+    plot_config: Optional[GlobalQAPlotConfig] = None,
+) -> str:
+    config = plot_config or GlobalQAPlotConfig()
+    parts = []
+    object_name = (
+        config.object_name
+        if config.object_name not in (None, "")
+        else result.metadata.get("object_id")
+    )
+    if object_name not in (None, ""):
+        if config.object_label is not None:
+            object_label = config.object_label
+        elif config.object_name not in (None, ""):
+            object_label = "Object"
+        elif str(result.spectrum.metadata.survey).lower() == "desi":
+            object_label = "DESI TARGETID"
+        else:
+            object_label = "ID"
+        parts.append(f"{object_label} {object_name}".strip())
     redshift = result.metadata.get("redshift")
     if redshift is not None and np.isfinite(redshift):
         parts.append(f"z={float(redshift):.4f}")
+    if config.show_coordinates:
+        ra = result.metadata.get("ra")
+        dec = result.metadata.get("dec")
+        if ra is not None and np.isfinite(ra):
+            parts.append(rf"RA={float(ra):.5f}")
+        if dec is not None and np.isfinite(dec):
+            parts.append(rf"Dec={float(dec):+.5f}")
     return " — ".join(parts)
 
 
@@ -268,7 +297,7 @@ def _configure_qa_axis(axis) -> None:
         direction="in",
         top=True,
         right=True,
-        labelsize=8,
+        labelsize=11,
     )
     axis.tick_params(which="major", length=4.0)
     axis.tick_params(which="minor", length=2.2)
@@ -280,18 +309,23 @@ def _annotate_emission_lines(axis, lines, *, y_fraction: float) -> Tuple[str, ..
     for line_wave, line_label in lines:
         if not x_min <= line_wave <= x_max:
             continue
+        label_y_fraction = (
+            min(y_fraction, 0.68)
+            if line_label.startswith("[")
+            else y_fraction
+        )
         axis.axvline(line_wave, zorder=0.5, **_LINE_MARKER_STYLE)
         axis.text(
             line_wave,
-            y_fraction,
+            label_y_fraction,
             line_label,
             transform=axis.get_xaxis_transform(),
             rotation=90,
             ha="center",
             va="bottom",
-            fontsize=6.5,
-            color="0.25",
-            alpha=0.72,
+            fontsize=8.5,
+            color="#355f8a",
+            alpha=0.82,
         )
         labels.append(line_label)
     return tuple(labels)
@@ -343,6 +377,175 @@ def _full_line_model(result: NeoFitWorkflowResult) -> np.ndarray:
     )
 
 
+def _has_host_context(result: NeoFitWorkflowResult) -> bool:
+    if result.total_spectrum is None or result.host_model_on_quasar_grid is None:
+        return False
+    host = np.asarray(result.host_model_on_quasar_grid, dtype=float)
+    return host.shape == result.spectrum.flux.shape and np.any(np.isfinite(host))
+
+
+def _host_fraction_annotation(result: NeoFitWorkflowResult) -> str:
+    samples = result.metadata.get("continuum_samples", {})
+    entries = []
+    for wavelength in (3000, 5100):
+        fraction = samples.get(f"fracHost_{wavelength}")
+        if fraction is not None and np.isfinite(fraction):
+            entries.append(
+                rf"$f_{{\rm host}}({wavelength}\,\mathrm{{\AA}})="
+                f"{100.0 * float(fraction):.1f}\\%$"
+            )
+    return "\n".join(entries)
+
+
+def _plot_host_context(
+    result: NeoFitWorkflowResult,
+    path: Path,
+    *,
+    figure_width: float = 10.5,
+) -> str:
+    """Plot the original spectrum, host decomposition, and final AGN model."""
+
+    import matplotlib.pyplot as plt
+
+    if not _has_host_context(result):
+        raise ValueError("A total spectrum and finite host model are required.")
+
+    spectrum = result.spectrum
+    total_spectrum = result.total_spectrum
+    wave = spectrum.wave_rest
+    host = np.asarray(result.host_model_on_quasar_grid, dtype=float)
+    line_model = _full_line_model(result)
+    agn_model = result.continuum.model + line_model
+    reconstructed_total = host + agn_model
+    valid_fit = spectrum.valid_mask & np.isfinite(host)
+    valid_total = (
+        total_spectrum.valid_mask
+        & np.isfinite(host)
+        & np.isfinite(reconstructed_total)
+    )
+    valid_wave = wave[valid_total | valid_fit]
+
+    fig, axes = plt.subplots(
+        2,
+        1,
+        figsize=(figure_width, 5.2),
+        sharex=True,
+        constrained_layout=True,
+        gridspec_kw={"height_ratios": (1.0, 1.0)},
+    )
+    top_axis, bottom_axis = axes
+
+    top_axis.plot(
+        wave[valid_total],
+        total_spectrum.flux[valid_total],
+        color="0.48",
+        lw=0.65,
+        label="original spectrum",
+    )
+    top_axis.plot(
+        wave[valid_total],
+        reconstructed_total[valid_total],
+        color="black",
+        lw=1.7,
+        label="host + final AGN model",
+    )
+    top_axis.plot(
+        wave[valid_total],
+        host[valid_total],
+        color="#2ca02c",
+        lw=1.25,
+        label="host galaxy",
+    )
+    top_upper = _rounded_model_upper_limit(reconstructed_total[valid_total])
+    if top_upper is not None:
+        top_axis.set_ylim(0.0, top_upper)
+    top_axis.set_ylabel(
+        _flux_density_axis_label(spectrum.flux_density_unit),
+        fontsize=9,
+    )
+    source_title = _qa_overview_title(result)
+    top_axis.set_title(
+        "Host decomposition and final-model context"
+        + (f" — {source_title}" if source_title else ""),
+        fontsize=11,
+    )
+    fraction_text = _host_fraction_annotation(result)
+    if fraction_text:
+        top_axis.text(
+            0.01,
+            0.96,
+            fraction_text,
+            transform=top_axis.transAxes,
+            ha="left",
+            va="top",
+            fontsize=8,
+            bbox={
+                "boxstyle": "round,pad=0.25",
+                "facecolor": "white",
+                "edgecolor": "0.75",
+                "alpha": 0.72,
+            },
+        )
+    top_axis.legend(
+        fontsize=8,
+        ncol=3,
+        loc="best",
+        framealpha=0.72,
+        borderpad=0.35,
+    )
+
+    bottom_axis.plot(
+        wave[valid_fit],
+        spectrum.flux[valid_fit],
+        color="0.48",
+        lw=0.65,
+        label="host-subtracted spectrum",
+    )
+    bottom_axis.plot(
+        wave[valid_fit],
+        agn_model[valid_fit],
+        color="black",
+        lw=1.7,
+        label="final AGN + emission-line model",
+    )
+    bottom_upper = _rounded_model_upper_limit(agn_model[valid_fit])
+    if bottom_upper is not None:
+        bottom_axis.set_ylim(0.0, bottom_upper)
+    bottom_axis.set_ylabel(
+        _flux_density_axis_label(spectrum.flux_density_unit),
+        fontsize=9,
+    )
+    bottom_axis.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=9)
+    bottom_axis.legend(
+        fontsize=8,
+        ncol=2,
+        loc="best",
+        framealpha=0.72,
+        borderpad=0.35,
+    )
+
+    if valid_wave.size:
+        x_limits = (float(valid_wave.min()), float(valid_wave.max()))
+        top_axis.set_xlim(*x_limits)
+        result.metadata["host_context_xlim"] = list(x_limits)
+    for axis in axes:
+        _configure_qa_axis(axis)
+
+    result.metadata["host_context_figure_size_inches"] = [
+        float(figure_width),
+        5.2,
+    ]
+    result.metadata["host_context_ymin"] = 0.0
+    result.metadata["host_context_model_upper_limits"] = {
+        "original_plus_host": top_upper,
+        "host_subtracted": bottom_upper,
+    }
+    result.metadata["host_context_fraction_annotation"] = fraction_text
+    fig.savefig(path, dpi=160)
+    plt.close(fig)
+    return str(path)
+
+
 def _plot_qa(
     result: NeoFitWorkflowResult,
     path: Path,
@@ -388,7 +591,33 @@ def _plot_qa(
     valid = spectrum.valid_mask
     line_model = _full_line_model(result)
     full_model = result.continuum.model + line_model
-    smoothed_data = (
+    host_overview = bool(
+        config.show_host_context_in_overview and _has_host_context(result)
+    )
+    result.metadata["qa_host_context_overview_requested"] = bool(
+        config.show_host_context_in_overview
+    )
+    result.metadata["qa_host_context_overview_used"] = host_overview
+    host_model = (
+        np.asarray(result.host_model_on_quasar_grid, dtype=float)
+        if host_overview
+        else np.zeros_like(full_model)
+    )
+    overview_data = (
+        np.asarray(result.total_spectrum.flux, dtype=float)
+        if host_overview
+        else spectrum.flux
+    )
+    overview_full_model = full_model + host_model
+    overview_continuum = result.continuum.model + host_model
+    overview_valid = valid.copy()
+    if host_overview:
+        overview_valid &= (
+            result.total_spectrum.valid_mask
+            & np.isfinite(host_model)
+            & np.isfinite(overview_data)
+        )
+    smoothed_fit_data = (
         _masked_running_median(
             spectrum.flux,
             valid,
@@ -397,19 +626,48 @@ def _plot_qa(
         if config.show_smoothed_data
         else None
     )
+    smoothed_overview_data = (
+        _masked_running_median(
+            overview_data,
+            overview_valid,
+            config.smoothing_window_pixels,
+        )
+        if config.show_smoothed_data
+        else None
+    )
 
-    def plot_common(ax, panel_mask, title):
+    def plot_common(
+        ax,
+        panel_mask,
+        title,
+        *,
+        data_values=None,
+        model_values=None,
+        continuum_values=None,
+        smoothed_values=None,
+        data_label="host-subtracted data",
+        model_label="full model",
+        continuum_label="total continuum",
+        host_values=None,
+    ):
+        data_values = spectrum.flux if data_values is None else data_values
+        model_values = full_model if model_values is None else model_values
+        continuum_values = (
+            result.continuum.model
+            if continuum_values is None
+            else continuum_values
+        )
         ax.plot(
             wave[panel_mask],
-            spectrum.flux[panel_mask],
+            data_values[panel_mask],
             color="0.45",
             lw=0.65,
-            label="host-subtracted data",
+            label=data_label,
         )
-        if smoothed_data is not None:
+        if smoothed_values is not None:
             ax.plot(
                 wave[panel_mask],
-                smoothed_data[panel_mask],
+                smoothed_values[panel_mask],
                 color="0.25",
                 lw=0.8,
                 alpha=0.8,
@@ -417,20 +675,28 @@ def _plot_qa(
             )
         ax.plot(
             wave[panel_mask],
-            full_model[panel_mask],
+            model_values[panel_mask],
             color="black",
             lw=1.8,
-            label="full model",
+            label=model_label,
         )
         ax.plot(
             wave[panel_mask],
-            result.continuum.model[panel_mask],
+            continuum_values[panel_mask],
             color="tab:orange",
-            lw=1.25,
-            ls="--",
-            label="total continuum",
+            lw=1.05,
+            ls="-",
+            label=continuum_label,
         )
+        if host_values is not None:
+            ax.plot(
+                wave[panel_mask],
+                host_values[panel_mask],
+                label="host galaxy",
+                **_HOST_STYLE,
+            )
         iron_label_used = False
+        balmer_label_used = False
         for component_name, component in result.continuum.component_models.items():
             if not np.any(np.abs(component[panel_mask]) > 0):
                 continue
@@ -438,6 +704,13 @@ def _plot_qa(
             if component_name in ("uv_iron", "optical_iron"):
                 label = "iron" if not iron_label_used else "_nolegend_"
                 iron_label_used = True
+            elif component_name in ("balmer_continuum", "balmer_series"):
+                label = (
+                    "Balmer continuum &\nhigh-order series"
+                    if not balmer_label_used
+                    else "_nolegend_"
+                )
+                balmer_label_used = True
             else:
                 label = component_name.replace("_", " ")
             ax.plot(
@@ -445,22 +718,35 @@ def _plot_qa(
                 component[panel_mask],
                 color=color,
                 ls=linestyle,
-                lw=0.9,
+                lw=0.75,
                 label=label,
             )
         limits = _percentile_limits(
-            [spectrum.flux[panel_mask], full_model[panel_mask]],
+            [data_values[panel_mask], model_values[panel_mask]],
             percentiles=(1.0, 99.8),
         )
         if limits:
             ax.set_ylim(*limits)
-        ax.set_title(title, fontsize=10)
-        ax.set_ylabel(_flux_density_axis_label(spectrum.flux_density_unit), fontsize=9)
+        ax.set_title(title, fontsize=12)
         _configure_qa_axis(ax)
 
-    overview_title = _qa_overview_title(result)
+    overview_title = _qa_overview_title(result, config)
     result.metadata["qa_overview_title"] = overview_title
-    plot_common(overview_axis, valid, overview_title)
+    plot_common(
+        overview_axis,
+        overview_valid,
+        overview_title,
+        data_values=overview_data,
+        model_values=overview_full_model,
+        continuum_values=result.continuum.model,
+        smoothed_values=smoothed_overview_data,
+        data_label=("original spectrum" if host_overview else "host-subtracted data"),
+        model_label=(
+            "host + full model" if host_overview else "full model"
+        ),
+        continuum_label="full continuum",
+        host_values=(host_model if host_overview else None),
+    )
     broad_label_used = False
     narrow_label_used = False
     wing_label_used = False
@@ -492,7 +778,7 @@ def _plot_qa(
             )
         lo, hi = _COMPLEX_WINDOWS[complex_name]
         overview_axis.axvspan(lo, hi, color="0.7", alpha=0.10)
-    valid_wave = wave[valid]
+    valid_wave = wave[overview_valid]
     if valid_wave.size:
         overview_axis.set_xlim(float(valid_wave.min()), float(valid_wave.max()))
         result.metadata["qa_overview_xlim"] = [
@@ -506,7 +792,9 @@ def _plot_qa(
                 y_fraction=0.82,
             )
         )
-    overview_upper = _rounded_model_upper_limit(full_model[valid])
+    overview_upper = _rounded_model_upper_limit(
+        overview_full_model[overview_valid]
+    )
     if overview_upper is not None:
         overview_axis.set_ylim(
             0.0,
@@ -515,16 +803,20 @@ def _plot_qa(
         result.metadata["qa_overview_ymin"] = 0.0
         result.metadata["qa_overview_model_upper_limit"] = overview_upper
     host_state = (
-        "pPXF-subtracted"
+        "decomposed with pPXF"
         if result.host_decomp_enabled
         or result.metadata.get("host_decomp_enabled", False)
-        else "not subtracted"
+        else "not decomposed"
     )
-    overview_annotation = (
+    overview_annotation_lines = [
         rf"$\chi^2_\nu(\mathrm{{cont.}})="
-        f"{_format_reduced_chi2(result.continuum.reduced_chi2)}$\n"
-        f"Host: {host_state}"
-    )
+        f"{_format_reduced_chi2(result.continuum.reduced_chi2)}$",
+        f"Host: {host_state}",
+    ]
+    host_fraction_annotation = _host_fraction_annotation(result)
+    if host_fraction_annotation:
+        overview_annotation_lines.extend(host_fraction_annotation.splitlines())
+    overview_annotation = "\n".join(overview_annotation_lines)
     overview_axis.text(
         0.01,
         0.97,
@@ -532,7 +824,7 @@ def _plot_qa(
         transform=overview_axis.transAxes,
         ha="left",
         va="top",
-        fontsize=7,
+        fontsize=9,
         bbox={
             "boxstyle": "round,pad=0.25",
             "facecolor": "white",
@@ -543,10 +835,10 @@ def _plot_qa(
     result.metadata["qa_overview_annotation"] = {
         "continuum_reduced_chi2": float(result.continuum.reduced_chi2),
         "host_state": host_state,
+        "host_fractions": host_fraction_annotation,
     }
-    overview_axis.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=9)
     overview_axis.legend(
-        fontsize=6.5,
+        fontsize=9,
         ncol=4,
         loc="best",
         framealpha=0.72,
@@ -554,7 +846,7 @@ def _plot_qa(
         handlelength=2.4,
     )
 
-    for axis, complex_name in zip(zoom_axes, available):
+    for zoom_index, (axis, complex_name) in enumerate(zip(zoom_axes, available)):
         lo, hi = _COMPLEX_WINDOWS[complex_name]
         panel_mask = valid & (wave >= lo) & (wave <= hi)
         title = {
@@ -568,7 +860,12 @@ def _plot_qa(
             rf"$\chi^2_\nu={_format_reduced_chi2(fit.reduced_chi2)}$"
         )
         result.metadata.setdefault("qa_zoom_titles", {})[complex_name] = title
-        plot_common(axis, panel_mask, title)
+        plot_common(
+            axis,
+            panel_mask,
+            title,
+            smoothed_values=smoothed_fit_data,
+        )
         combined = _combined_broad_profile(fit)
         axis.plot(
             wave[panel_mask],
@@ -585,7 +882,7 @@ def _plot_qa(
                     component[panel_mask],
                     label=(
                         "broad components"
-                        if not broad_component_label_used
+                        if zoom_index == 0 and not broad_component_label_used
                         else "_nolegend_"
                     ),
                     **_BROAD_COMPONENT_STYLE,
@@ -616,24 +913,29 @@ def _plot_qa(
                 y_fraction=0.82,
             )
         )
-        axis.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=9)
         handles, labels = axis.get_legend_handles_labels()
         unique = [
             (handle, label)
             for handle, label in zip(handles, labels)
             if label == "broad components"
         ]
-        if unique:
+        if zoom_index == 0 and unique:
             axis.legend(
                 [unique[0][0]],
                 [unique[0][1]],
-                fontsize=6.5,
+                fontsize=9,
                 loc="best",
                 framealpha=0.72,
                 borderpad=0.35,
             )
     if not available:
         zoom_axes[0].set_visible(False)
+    fig.supxlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=13)
+    fig.supylabel(
+        _flux_density_axis_label(spectrum.flux_density_unit),
+        fontsize=13,
+    )
+    result.metadata["qa_shared_axis_labels"] = True
     fig.savefig(path, dpi=160)
     plt.close(fig)
     return str(path)
@@ -799,6 +1101,19 @@ def write_global_line_products(
         qa_plot_config,
     )
     files["qa_plot"] = files["global_plot"]
+    if _has_host_context(result):
+        files["host_context_plot"] = _plot_host_context(
+            result,
+            out / "diagnostic_global_host_context.png",
+            figure_width=(
+                qa_plot_config.figure_width
+                if qa_plot_config is not None
+                else GlobalQAPlotConfig().figure_width
+            ),
+        )
+        result.metadata["host_context_plot_created"] = True
+    else:
+        result.metadata["host_context_plot_created"] = False
     files["balmer_edge_plot"] = _plot_global(
         result, out / "diagnostic_balmer_edge.png", window=(3300.0, 4300.0)
     )
