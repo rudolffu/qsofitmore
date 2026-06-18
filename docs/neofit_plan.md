@@ -20,6 +20,110 @@ The main goals are:
 - no plotting, file writing, pandas, Astropy tables, or mutable legacy instance
   attributes inside optimization loops.
 
+## Global Continuum and Emission-Line Workflow
+
+The first complete science workflow is available through:
+
+```python
+result = neofit.fit_global_lines_workflow(
+    spectrum_path,
+    row_index=19,
+    run_host_decomp=True,
+)
+neofit.write_global_line_products(result, output_dir)
+```
+
+It performs optional pPXF host subtraction, a global continuum fit, a
+constrained H-beta/[O III] fit, and a short fixed-point refinement that
+synchronizes the high-order Balmer-series FWHM with the numerical FWHM of the
+summed broad-H-beta profile. It then fits Mg II and
+H-alpha/[N II]/[S II] independently when their rest-frame windows are covered.
+The continuum contains a single power law,
+independently broadened VW01 and Park22 Fe II, Balmer continuum, and a bundled
+Storey & Hummer high-order Balmer line list.
+
+Pure SH95 lines through `n=50` are the production default. K13-full and
+asymptotic extensions through `n=400` are explicit systematics choices and
+produce a model-dependence warning. The diagnostic energy-only extension is not
+bundled.
+
+The H-beta model uses three ordered broad Gaussians, tied narrow H-beta/[O III]
+kinematics, a fixed [O III] 5007/4959 integrated-flux ratio of 2.98, and
+evidence-based [O III] wing selection. Mg II uses two ordered broad Gaussians.
+H-alpha uses three ordered broad Gaussians plus one tied narrow kinematic group
+for narrow H-alpha, [N II], and [S II]; the [N II] 6585/6549 ratio is fixed to
+2.96. Simple local H-beta fits may instead use:
+
+```python
+config = neofit.recipes.local_hbeta(profile="lorentzian")
+```
+
+Covariance errors are statistical and condition on the fitted host and
+continuum. Optional Monte Carlo trials repeat the full enabled workflow.
+
+Global continuum and H-beta fitting use bounded variable projection by default.
+Component amplitudes and integrated line fluxes are solved with bounded linear
+least squares at each nonlinear step, while slopes, widths, and velocities are
+optimized with analytic or semi-analytic Jacobians. The previous full-parameter
+finite-difference solver remains available for validation:
+
+```python
+global_config = neofit.GlobalContinuumConfig(
+    optimizer_method="legacy_joint",
+)
+hbeta_config = neofit.HbetaComplexConfig(
+    optimizer_method="legacy_joint",
+)
+```
+
+The default `optimizer_method="auto"` falls back to the legacy solver with an
+`optimizer_fallback_legacy` warning if variable projection fails.
+`optimizer_method="variable_projection"` disables that fallback, and
+`jacobian_method="2-point"` finite-differences the reduced residual for
+derivative validation. Balmer-series/H-beta width synchronization converges at
+`5 km/s` by default.
+
+The H-beta-named APIs remain compatibility wrappers and now return the same
+covered optional complexes. `NeoFitWorkflowResult.line_complexes` contains the
+attempted fits, while `mgii` and `halpha` are `None` when not covered.
+`success` retains its historical continuum-plus-H-beta meaning;
+`complete_success` additionally requires every attempted optional complex to
+succeed.
+
+The standard QA product remains named `diagnostic_global_continuum.png`. Its
+top row is a full-spectrum overview limited to the valid wavelength minimum and
+maximum; up to three covered complexes share equally sized columns in the
+second row. The canvas remains `15.3 x 6.2` inches regardless of the number of
+zoom panels. H-beta, Mg II, and H-alpha have selection priority and are
+displayed in wavelength order.
+The overview shows each summed broad profile with one common style and one
+legend label, while the zoom panels show the individual broad Gaussian
+components with a second common style. Narrow lines use solid curves and
+outflow wings use dash-dot curves. Zoom-panel limits always include zero, and
+all panels use model-driven upper limits so fitted narrow peaks remain visible.
+The title carries the object ID and redshift when available; fit annotations
+report the continuum and per-complex reduced chi-square values without
+constructing a synthetic global statistic. Major and minor ticks point inward,
+and major emission lines are marked directly. Axis labels use Matplotlib
+mathtext and Angstrom symbols without requiring an external LaTeX installation.
+
+Rendering can be customized without changing product names:
+
+```python
+qa_config = neofit.GlobalQAPlotConfig(
+    show_smoothed_data=True,
+    smoothing_window_pixels=7,
+)
+neofit.write_global_line_products(
+    result,
+    output_dir,
+    qa_plot_config=qa_config,
+)
+```
+
+The optional smoothed trace is a mask-aware running median and is disabled by
+default.
+
 ## neofit vs Legacy QSOFitNew
 
 The current `QSOFitNew.Fit(...)` workflow is a large orchestration method. It
@@ -294,8 +398,7 @@ excluded from the host-subtracted neofit spectrum. The original total spectrum,
 host-subtracted spectrum, pPXF fit, host SED, and local neofit result are all
 returned in a `NeoFitHostWorkflowResult`.
 
-`fit_kind="global"` is reserved and currently raises `NotImplementedError`; the
-global neofit model is not implemented yet.
+`fit_kind="global"` delegates to the global continuum and H-beta workflow.
 
 Recipes use enlarged local windows and legacy-style line-free continuum bands
 when iron is enabled or when enough wavelength coverage is available. The
@@ -436,25 +539,19 @@ single local complex is small. The API and module boundaries should make it
 straightforward to assemble truly sparse block Jacobians for many independent
 windows later.
 
-## Explicit Non-Goals for the First Implementation
+## Remaining Non-Goals
 
 Do not implement yet:
 
-- full/global Fe II fitting with velocity-shift parameters;
-- Balmer continuum;
 - full qsofitmore line-table compatibility;
-- Monte Carlo uncertainty loops;
-- pPXF host decomposition inside `neofit`;
 - JAX, Numba, or Cython;
 - DESI batch processing;
-- plotting-heavy outputs;
 - legacy FITS output compatibility;
 - replacement of `QSOFitNew`.
 
 Additional current non-goals:
 
 - automatic flux-unit inference from numerical scale;
-- equivalent-width reporting;
 - shared-parameter local-window fitting;
 - true block-sparse multi-window Jacobian assembly.
 
