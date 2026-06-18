@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
-from .config import GaussianComponent, IronTemplateConfig, LineComplexConfig, LocalFitConfig
+from .config import GaussianComponent, IronTemplateConfig, LineComplexConfig, LocalFitConfig, LorentzianComponent
 
 
 def _iron_config(
@@ -25,8 +25,29 @@ def local_hbeta(
     iron_template: Optional[str] = None,
     iron_template_path: Optional[str] = None,
     iron_fwhm_kms: float = 3000.0,
+    profile: str = "gaussian",
 ) -> LineComplexConfig:
     """Return a minimal broad H-beta local-window recipe."""
+
+    profile_key = str(profile).strip().lower()
+    if profile_key == "gaussian":
+        component = GaussianComponent(
+            name="Hb_broad",
+            center=4861.33,
+            amp=10.0,
+            sigma=30.0,
+            bounds={"amp": (0.0, None), "center": (4800.0, 4920.0), "sigma": (5.0, 200.0)},
+        )
+    elif profile_key == "lorentzian":
+        component = LorentzianComponent(
+            name="Hb_broad",
+            center=4861.33,
+            amp=10.0,
+            gamma=20.0,
+            bounds={"amp": (0.0, None), "center": (4800.0, 4920.0), "gamma": (3.0, 150.0)},
+        )
+    else:
+        raise ValueError("local_hbeta profile must be 'gaussian' or 'lorentzian'.")
 
     return LineComplexConfig(
         name="Hb_OIII",
@@ -37,15 +58,7 @@ def local_hbeta(
         plot_window=(4700.0, 5100.0),
         local_continuum="linear",
         iron=_iron_config(iron_template, iron_template_path, iron_fwhm_kms),
-        components=[
-            GaussianComponent(
-                name="Hb_broad",
-                center=4861.33,
-                amp=10.0,
-                sigma=30.0,
-                bounds={"amp": (0.0, None), "center": (4800.0, 4920.0), "sigma": (5.0, 200.0)},
-            )
-        ],
+        components=[component],
     )
 
 
