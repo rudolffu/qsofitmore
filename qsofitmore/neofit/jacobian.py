@@ -7,6 +7,7 @@ from scipy import sparse
 
 from .models.continuum import continuum_partials
 from .models.gaussian import gaussian_partials
+from .models.lorentzian import lorentzian_partials
 from .parameters import PackedParameters
 from .residuals import iron_basis_vector
 from .templates.iron import evaluate_iron_basis
@@ -47,7 +48,8 @@ def model_jacobian_dense(theta: np.ndarray, packed: PackedParameters, wave: np.n
     wave = np.asarray(wave, dtype=float)
     jac = np.zeros((wave.size, theta.size), dtype=float)
     for component in packed.components:
-        part = gaussian_partials(wave, theta[component.amp], theta[component.center], theta[component.sigma])
+        partials = lorentzian_partials if component.profile == "lorentzian" else gaussian_partials
+        part = partials(wave, theta[component.amp], theta[component.center], theta[component.sigma])
         jac[:, component.amp] = part[:, 0]
         jac[:, component.center] = part[:, 1]
         jac[:, component.sigma] = part[:, 2]
