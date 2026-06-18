@@ -96,3 +96,21 @@ Intended for MgII-region local fits.
 - No physical Fe II template uncertainty model is included.
 - No Fe II multiplet group tying or full legacy qsofitmore Fe II behavior is
   implemented yet.
+
+## High-Order Balmer Templates
+
+`data/balmer/` contains 12 CSV products copied from
+`balmer_template_builder` commit `d3e1695`. They preserve vacuum wavelength,
+H-beta-relative intensity, Case B physical conditions, and row-level
+provenance.
+
+The dimensions are:
+
+- `log10 Ne = 9, 10`
+- `n_min = 6, 7`
+- direct Storey & Hummer 1995 lines through `n=50`
+- K13-full and asymptotic systematics extensions through `n=400`
+
+Pure SH95 is the fitting default. Extended products carry
+`balmer_high_n_extension_model_dependent`; the diagnostic energy-only
+extension is deliberately excluded.

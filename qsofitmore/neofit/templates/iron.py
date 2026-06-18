@@ -67,7 +67,11 @@ def _log_grid(wave_min: float, wave_max: float, velocity_step_kms: float) -> np.
     return np.exp(np.arange(np.log(wave_min), np.log(wave_max) + 0.5 * dlog, dlog))
 
 
-def _broaden_template(template: IronTemplate, fwhm_kms: float, velocity_step_kms: float = 25.0):
+def _broaden_template_with_derivative(
+    template: IronTemplate,
+    fwhm_kms: float,
+    velocity_step_kms: float = 25.0,
+):
     if fwhm_kms <= 0 or not np.isfinite(fwhm_kms):
         raise IronTemplateError("iron_template_parse_failed", "Iron template FWHM must be positive and finite.")
     wave = template.wave_rest
@@ -77,9 +81,47 @@ def _broaden_template(template: IronTemplate, fwhm_kms: float, velocity_step_kms
     sigma_pix = (float(fwhm_kms) / FWHM_TO_SIGMA) / float(velocity_step_kms)
     half = max(1, int(np.ceil(4.0 * sigma_pix)))
     x = np.arange(-half, half + 1, dtype=float)
-    kernel = np.exp(-0.5 * (x / sigma_pix) ** 2)
-    kernel /= kernel.sum()
-    return grid, np.convolve(sampled, kernel, mode="same")
+    raw_kernel = np.exp(-0.5 * (x / sigma_pix) ** 2)
+    raw_derivative = raw_kernel * x**2 / sigma_pix**3
+    kernel_sum = raw_kernel.sum()
+    kernel = raw_kernel / kernel_sum
+    kernel_derivative_sigma = (
+        raw_derivative * kernel_sum - raw_kernel * raw_derivative.sum()
+    ) / kernel_sum**2
+    sigma_derivative_fwhm = 1.0 / (FWHM_TO_SIGMA * float(velocity_step_kms))
+    kernel_derivative_fwhm = kernel_derivative_sigma * sigma_derivative_fwhm
+    return (
+        grid,
+        np.convolve(sampled, kernel, mode="same"),
+        np.convolve(sampled, kernel_derivative_fwhm, mode="same"),
+    )
+
+
+def _broaden_template(template: IronTemplate, fwhm_kms: float, velocity_step_kms: float = 25.0):
+    grid, broadened, _ = _broaden_template_with_derivative(
+        template, fwhm_kms, velocity_step_kms
+    )
+    return grid, broadened
+
+
+def _apply_coverage_taper(
+    template: IronTemplate,
+    wave_rest_fit: np.ndarray,
+    values: np.ndarray,
+) -> np.ndarray:
+    values = np.asarray(values, dtype=float).copy()
+    coverage = template.coverage or (float(template.wave_rest.min()), float(template.wave_rest.max()))
+    span = float(coverage[1] - coverage[0])
+    taper_width = min(100.0, max(20.0, 0.05 * span))
+    left = (wave_rest_fit >= coverage[0]) & (wave_rest_fit < coverage[0] + taper_width)
+    right = (wave_rest_fit > coverage[1] - taper_width) & (wave_rest_fit <= coverage[1])
+    if np.any(left):
+        phase = (wave_rest_fit[left] - coverage[0]) / taper_width
+        values[left] *= 0.5 - 0.5 * np.cos(np.pi * phase)
+    if np.any(right):
+        phase = (coverage[1] - wave_rest_fit[right]) / taper_width
+        values[right] *= 0.5 - 0.5 * np.cos(np.pi * phase)
+    return values
 
 
 def evaluate_iron_basis(
@@ -92,7 +134,32 @@ def evaluate_iron_basis(
 
     wave_rest_fit = np.asarray(wave_rest_fit, dtype=float)
     broadened_wave, broadened_flux = _broaden_template(template, fwhm_kms, velocity_step_kms=velocity_step_kms)
-    return np.interp(wave_rest_fit, broadened_wave, broadened_flux, left=0.0, right=0.0)
+    basis = np.interp(wave_rest_fit, broadened_wave, broadened_flux, left=0.0, right=0.0)
+    return _apply_coverage_taper(template, wave_rest_fit, basis)
+
+
+def evaluate_iron_basis_with_derivative(
+    template: IronTemplate,
+    wave_rest_fit: np.ndarray,
+    fwhm_kms: float,
+    velocity_step_kms: float = 25.0,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Return the broadened iron basis and its FWHM derivative."""
+
+    wave_rest_fit = np.asarray(wave_rest_fit, dtype=float)
+    broadened_wave, broadened_flux, derivative_flux = _broaden_template_with_derivative(
+        template,
+        fwhm_kms,
+        velocity_step_kms=velocity_step_kms,
+    )
+    basis = np.interp(wave_rest_fit, broadened_wave, broadened_flux, left=0.0, right=0.0)
+    derivative = np.interp(
+        wave_rest_fit, broadened_wave, derivative_flux, left=0.0, right=0.0
+    )
+    return (
+        _apply_coverage_taper(template, wave_rest_fit, basis),
+        _apply_coverage_taper(template, wave_rest_fit, derivative),
+    )
 
 
 def prepare_iron_template(
