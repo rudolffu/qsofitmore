@@ -15,7 +15,7 @@ Typical usage:
 
 from __future__ import annotations
 
-from typing import Any, Dict, Iterable, List, Optional
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import os
 
@@ -50,6 +50,80 @@ COL_DTYPES = [
 ]
 
 _C_KMS = 299792.458
+
+
+def _normalize_wave_scale(value: Optional[str], default: str = "auto") -> str:
+    value = default if value is None else str(value).strip().lower()
+    return value if value in ("auto", "log", "linear") else default
+
+
+def _normalize_velocity_units(value: Optional[str], default: str = "auto") -> str:
+    value = default if value is None else str(value).strip().lower()
+    if value in ("kms", "kmps"):
+        return "km/s"
+    return value if value in ("auto", "lnlambda", "km/s") else default
+
+
+def _table_velocity_hint(t: Table) -> Optional[str]:
+    values = []
+    for col in ("inisig", "minsig", "maxsig", "voff"):
+        if col not in t.colnames:
+            continue
+        arr = np.abs(np.asarray(t[col], dtype=float))
+        arr = arr[np.isfinite(arr)]
+        if arr.size:
+            values.append(arr)
+    if not values:
+        return None
+    max_value = float(np.nanmax(np.concatenate(values)))
+    if max_value > 5.0:
+        return "km/s"
+    if max_value < 0.1:
+        return "lnlambda"
+    return None
+
+
+def _axis_metadata_for_table(
+    t: Table,
+    output_path: str,
+    wave_scale: Optional[str] = "auto",
+    velocity_units: Optional[str] = "auto",
+) -> Tuple[str, str]:
+    wave_scale = _normalize_wave_scale(wave_scale)
+    velocity_units = _normalize_velocity_units(velocity_units)
+
+    if velocity_units == "auto":
+        env_units = _normalize_velocity_units(os.environ.get("QSOFITMORE_VELOCITY_UNITS"), default="auto")
+        velocity_units = env_units if env_units != "auto" else (_table_velocity_hint(t) or "lnlambda")
+
+    if wave_scale == "auto":
+        env_wave = _normalize_wave_scale(os.environ.get("QSOFITMORE_WAVE_SCALE"), default="auto")
+        filename = os.path.basename(str(output_path)).lower()
+        if env_wave != "auto":
+            wave_scale = env_wave
+        elif "linear" in filename:
+            wave_scale = "linear"
+        elif "log" in filename:
+            wave_scale = "log"
+        elif velocity_units == "km/s":
+            wave_scale = "linear"
+        else:
+            wave_scale = "log"
+
+    return wave_scale, velocity_units
+
+
+def _apply_axis_metadata(
+    hdr: fits.Header,
+    t: Table,
+    output_path: str,
+    wave_scale: Optional[str] = "auto",
+    velocity_units: Optional[str] = "auto",
+) -> fits.Header:
+    wave_scale, velocity_units = _axis_metadata_for_table(t, output_path, wave_scale, velocity_units)
+    hdr["WAVESCL"] = (wave_scale, "Line-fitting model axis: log or linear")
+    hdr["VELUNIT"] = (velocity_units, "Units for inisig/minsig/maxsig/voff")
+    return hdr
 
 
 def _ensure_table_schema(tab: Table) -> Table:
@@ -104,18 +178,21 @@ def fits_to_csv(fits_path: str, csv_path: str) -> None:
     t.write(csv_path, format="csv", overwrite=True)
 
 
-def csv_to_fits(csv_path: str, fits_path: str, header: Optional[fits.Header] = None) -> None:
+def csv_to_fits(
+    csv_path: str,
+    fits_path: str,
+    header: Optional[fits.Header] = None,
+    wave_scale: Optional[str] = "auto",
+    velocity_units: Optional[str] = "auto",
+) -> None:
     """Convert a CSV parameter table back to FITS with required schema."""
     t = Table.read(csv_path, format="csv")
     t = _ensure_table_schema(t)
     hdu = table_to_hdu(t)  # robust conversion from astropy Table to BinTableHDU
     hdu.name = "data"
     # Merge/attach descriptive header if provided
-    hdr = header or _default_header()
-    # Record velocity unit if provided via environment
-    vel_env = os.environ.get('QSOFITMORE_VELOCITY_UNITS', '').strip().lower()
-    if vel_env in ("km/s", "kms", "kmps"):
-        hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
+    hdr = header.copy() if header is not None else _default_header()
+    hdr = _apply_axis_metadata(hdr, t, fits_path, wave_scale, velocity_units)
     for key, val in hdr.items():
         try:
             comment = hdr.comments[key]
@@ -149,7 +226,13 @@ def fits_to_yaml(fits_path: str, yaml_path: str) -> None:
         yaml.safe_dump(rows, f, sort_keys=False)
 
 
-def yaml_to_fits(yaml_path: str, fits_path: str, header: Optional[fits.Header] = None) -> None:
+def yaml_to_fits(
+    yaml_path: str,
+    fits_path: str,
+    header: Optional[fits.Header] = None,
+    wave_scale: Optional[str] = "auto",
+    velocity_units: Optional[str] = "auto",
+) -> None:
     """Convert a YAML parameter list back to FITS.
 
     Accepts a YAML list of dicts. Keys not present are filled with defaults.
@@ -180,10 +263,8 @@ def yaml_to_fits(yaml_path: str, fits_path: str, header: Optional[fits.Header] =
 
     hdu = table_to_hdu(t)
     hdu.name = "data"
-    hdr = header or _default_header()
-    vel_env = os.environ.get('QSOFITMORE_VELOCITY_UNITS', '').strip().lower()
-    if vel_env in ("km/s", "kms", "kmps"):
-        hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
+    hdr = header.copy() if header is not None else _default_header()
+    hdr = _apply_axis_metadata(hdr, t, fits_path, wave_scale, velocity_units)
     for key, val in hdr.items():
         try:
             comment = hdr.comments[key]
@@ -305,7 +386,7 @@ def convert_fits_lnlambda_to_kms(fits_in: str, fits_out: str) -> None:
     hdu = table_to_hdu(t2)
     hdu.name = "data"
     hdr = _default_header()
-    hdr["VELUNIT"] = ("km/s", "Units for inisig/minsig/maxsig/voff")
+    hdr = _apply_axis_metadata(hdr, t2, fits_out, wave_scale="linear", velocity_units="km/s")
     for key, val in hdr.items():
         try:
             comment = hdr.comments[key]

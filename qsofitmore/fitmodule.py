@@ -3,6 +3,7 @@ import sys
 import os
 import glob
 import warnings
+from dataclasses import dataclass
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -40,6 +41,15 @@ sciplotstyle()
 
 _BROAD_SIGMA_THRESHOLD_LN = 0.0017
 _BROAD_SIGMA_THRESHOLD_KMS = (np.exp(_BROAD_SIGMA_THRESHOLD_LN) - 1.0) * 299792.458
+
+
+@dataclass(frozen=True)
+class LineTableConfig:
+    """Resolved emission-line table and model-axis interpretation."""
+
+    path: str
+    wave_scale: str
+    velocity_units: str
 
 class QSOFitNew:
     def __init__(self, lam, flux, err, z, ra=0, dec=0, name=None, plateid=None, mjd=None, fiberid=None, 
@@ -96,16 +106,173 @@ class QSOFitNew:
         self.pl_pivot = 3000.0
         # Wavelength/velocity configuration
         migration_config.refresh_axis_from_env()
-        self.wave_scale = migration_config.wave_scale  # 'log' or 'linear'
-        self.velocity_units = migration_config.velocity_units  # 'lnlambda' or 'km/s'
+        self.wave_scale = migration_config.wave_scale  # 'auto', 'log', or 'linear'
+        self.velocity_units = migration_config.velocity_units  # 'auto', 'lnlambda', or 'km/s'
         self._c_kms = 299792.458
         self.narrow_max_kms = migration_config.narrow_max_kms
         self._broken_pl_profile = 'optical'
         self._broken_pl_params = {'pivot': 3000.0, 'break_wave': 4661.0}
+        self.line_list_path = None
+        self.line_table_config = None
+
+    @staticmethod
+    def _normalize_wave_scale(value):
+        value = 'auto' if value is None else str(value).strip().lower()
+        return value if value in ('auto', 'log', 'linear') else 'auto'
+
+    @staticmethod
+    def _normalize_velocity_units(value):
+        value = 'auto' if value is None else str(value).strip().lower()
+        if value in ('kms', 'kmps'):
+            return 'km/s'
+        return value if value in ('auto', 'lnlambda', 'km/s') else 'auto'
+
+    def _line_table_candidates(self):
+        """Return candidate line table paths in deterministic preference order."""
+        filenames = ('qsopar.fits', 'qsopar_linear.fits', 'qsopar_log.fits')
+        dirs = []
+        if self.path:
+            dirs.append(self.path)
+        dirs.extend(['output', '.'])
+
+        candidates = []
+        seen = set()
+        for directory in dirs:
+            for filename in filenames:
+                candidate = os.path.normpath(os.path.join(directory, filename))
+                key = os.path.abspath(candidate)
+                if key not in seen:
+                    candidates.append(candidate)
+                    seen.add(key)
+        return candidates
+
+    def _line_table_value_scale_hint(self, data):
+        """Infer units from sigma/offset magnitudes when metadata is absent."""
+        values = []
+        for col in ('inisig', 'minsig', 'maxsig', 'voff'):
+            try:
+                arr = np.asarray(data[col], dtype=float)
+            except Exception:
+                continue
+            arr = np.abs(arr[np.isfinite(arr)])
+            if arr.size:
+                values.append(arr)
+        if not values:
+            return None
+        max_value = float(np.nanmax(np.concatenate(values)))
+        if max_value > 5.0:
+            return 'km/s'
+        if max_value < 0.1:
+            return 'lnlambda'
+        return None
+
+    def _read_line_table(self, path):
+        """Read a line parameter table from FITS or CSV."""
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext == '.csv':
+            return Table.read(path, format='csv').as_array()
+        if ext == '.ecsv':
+            return Table.read(path, format='ascii.ecsv').as_array()
+        with fits.open(path) as hdul:
+            return hdul[1].data.copy()
+
+    def _infer_line_table_config(self, path, wave_scale='auto', velocity_units='auto'):
+        """Infer line-table axis and parameter units from user choice, metadata, and values."""
+        requested_wave_scale = self._normalize_wave_scale(wave_scale)
+        requested_velocity_units = self._normalize_velocity_units(velocity_units)
+        ext = os.path.splitext(str(path))[1].lower()
+        if ext in ('.csv', '.ecsv'):
+            header_wave = None
+            header_vel = None
+            data = self._read_line_table(path)
+            value_units = self._line_table_value_scale_hint(data)
+        else:
+            with fits.open(path) as hdul:
+                header = hdul[1].header
+                data = hdul[1].data
+                header_wave = (
+                    header.get('WAVESCL')
+                    or header.get('WAVESCALE')
+                    or header.get('WAVE_SCALE')
+                )
+                header_vel = header.get('VELUNIT') or header.get('VELUNITS')
+                value_units = self._line_table_value_scale_hint(data)
+
+        lower_path = os.path.basename(path).lower()
+        if requested_wave_scale != 'auto':
+            final_wave_scale = requested_wave_scale
+        elif header_wave is not None and self._normalize_wave_scale(header_wave) != 'auto':
+            final_wave_scale = self._normalize_wave_scale(header_wave)
+        elif 'linear' in lower_path:
+            final_wave_scale = 'linear'
+        elif 'log' in lower_path:
+            final_wave_scale = 'log'
+        elif value_units == 'km/s':
+            final_wave_scale = 'linear'
+        elif value_units == 'lnlambda':
+            final_wave_scale = 'log'
+        else:
+            final_wave_scale = 'log'
+
+        if requested_velocity_units != 'auto':
+            final_velocity_units = requested_velocity_units
+        elif header_vel is not None and self._normalize_velocity_units(header_vel) != 'auto':
+            final_velocity_units = self._normalize_velocity_units(header_vel)
+        elif value_units is not None:
+            final_velocity_units = value_units
+        else:
+            final_velocity_units = 'lnlambda'
+
+        return LineTableConfig(path=path, wave_scale=final_wave_scale, velocity_units=final_velocity_units)
+
+    def _resolve_line_table_config(self, line_list_path=None, wave_scale='auto', velocity_units='auto'):
+        """Resolve the active line table and infer how its line-width columns are encoded."""
+        if line_list_path is not None:
+            path = os.path.normpath(str(line_list_path))
+            if not os.path.exists(path):
+                raise FileNotFoundError(self._linelist_missing_message(path))
+            return self._infer_line_table_config(path, wave_scale, velocity_units)
+
+        candidates = self._line_table_candidates()
+        existing = [path for path in candidates if os.path.exists(path)]
+        if not existing:
+            raise FileNotFoundError(self._linelist_missing_message(candidates[0]))
+        if len(existing) > 1:
+            warnings.warn(
+                "Multiple line parameter files found; using "
+                f"{existing[0]!r}. Pass line_list_path=... to choose explicitly.",
+                UserWarning,
+                stacklevel=2,
+            )
+        return self._infer_line_table_config(existing[0], wave_scale, velocity_units)
+
+    def _prepare_line_table_config(self, line_list_path=None, wave_scale='auto', velocity_units='auto'):
+        """Resolve the line table and store the active line-axis configuration."""
+        if self._normalize_wave_scale(wave_scale) == 'auto' and self._normalize_wave_scale(self.wave_scale) != 'auto':
+            wave_scale = self.wave_scale
+        if self._normalize_velocity_units(velocity_units) == 'auto' and self._normalize_velocity_units(self.velocity_units) != 'auto':
+            velocity_units = self.velocity_units
+        config = self._resolve_line_table_config(line_list_path, wave_scale, velocity_units)
+        self.line_table_config = config
+        self.line_list_path = config.path
+        self.wave_scale = config.wave_scale
+        self.velocity_units = config.velocity_units
+        return config
 
     def _linelist_path(self) -> str:
-        """Return the on-disk path for the active wavelength-scale line table."""
-        base = 'qsopar_linear' if self.wave_scale == 'linear' else 'qsopar_log'
+        """Return the resolved emission-line parameter table path."""
+        if hasattr(self, 'line_list_path') and self.line_list_path:
+            return self.line_list_path
+
+        requested_wave_scale = self._normalize_wave_scale(self.wave_scale)
+        if requested_wave_scale == 'auto':
+            config = self._resolve_line_table_config(
+                wave_scale=self.wave_scale,
+                velocity_units=self.velocity_units,
+            )
+            return config.path
+
+        base = 'qsopar_linear' if requested_wave_scale == 'linear' else 'qsopar_log'
         filename = f"{base}.fits"
         if not self.path:
             output_path = os.path.join('output', filename)
@@ -117,12 +284,12 @@ class QSOFitNew:
         base = os.path.basename(linelist_path)
         details = (
             f"Line parameter file not found: {linelist_path!r}. "
-            f"Current wave_scale={self.wave_scale!r}, so qsofitmore expects {base!r}. "
+            f"Current wave_scale={self.wave_scale!r}, so qsofitmore expected {base!r}. "
         )
         if not self.path:
             details += (
-                "Pass path='./output/' (or the directory containing the line table) "
-                "to QSOFitNew, or create the file in the current working directory. "
+                "Pass line_list_path=... to Fit(), set path=... on QSOFitNew, "
+                "or create qsopar.fits/qsopar_linear.fits/qsopar_log.fits under ./output or the current directory. "
             )
             output_candidate = os.path.join('output', base)
             if output_candidate != linelist_path:
@@ -130,9 +297,9 @@ class QSOFitNew:
         else:
             details += f"Create {base!r} under path={self.path!r}. "
         if self.wave_scale == 'linear':
-            details += "For linear runs, regenerate qsopar_linear.fits from qsopar_linear.csv/yaml before fitting."
+            details += "For linear runs, regenerate qsopar.fits or qsopar_linear.fits from CSV/YAML before fitting."
         else:
-            details += "For log runs, generate qsopar_log.fits before fitting."
+            details += "For log runs, generate qsopar.fits or qsopar_log.fits before fitting."
         return details
 
     def _default_output_dir(self) -> str:
@@ -149,14 +316,20 @@ class QSOFitNew:
             os.makedirs(directory, exist_ok=True)
         return os.path.join(directory or '.', filename)
 
-    # -------- Axis/units helpers (for gradual migration) --------
+    # -------- Emission-line axis/unit helpers --------
+    def _active_wave_scale(self):
+        return self.wave_scale if self.wave_scale in ('log', 'linear') else 'log'
+
+    def _active_velocity_units(self):
+        return self.velocity_units if self.velocity_units in ('lnlambda', 'km/s') else 'lnlambda'
+
     def _x_axis(self, wave):
         """Return model x-axis from wavelength array according to configured scale."""
-        return np.log(wave) if self.wave_scale == 'log' else wave
+        return np.log(wave) if self._active_wave_scale() == 'log' else wave
 
     def _axis_to_lambda(self, x):
         """Convert model x-axis back to wavelength."""
-        return np.exp(x) if self.wave_scale == 'log' else x
+        return np.exp(x) if self._active_wave_scale() == 'log' else x
 
     def _sigma_axis_units(self, sigma_value, lambda_rest):
         """Convert table sigma value to model-axis sigma.
@@ -165,20 +338,20 @@ class QSOFitNew:
               if km/s -> (sigma_kms / c) * lambda_rest
               if lnlambda -> sigma_ln * lambda_rest (local linearization)
         """
-        if self.wave_scale == 'log':
-            if self.velocity_units == 'km/s':
+        if self._active_wave_scale() == 'log':
+            if self._active_velocity_units() == 'km/s':
                 return float(sigma_value) / self._c_kms
             else:
                 return float(sigma_value)
         else:
-            if self.velocity_units == 'km/s':
+            if self._active_velocity_units() == 'km/s':
                 return (float(sigma_value) / self._c_kms) * float(lambda_rest)
             else:
                 return float(sigma_value) * float(lambda_rest)
 
     def _kms_to_sigma_axis(self, kms: float, lambda_rest: float) -> float:
         """Convert a sigma in km/s to model-axis sigma (ln or linear)."""
-        if self.wave_scale == 'log':
+        if self._active_wave_scale() == 'log':
             return float(kms) / self._c_kms
         else:
             return (float(kms) / self._c_kms) * float(lambda_rest)
@@ -188,9 +361,9 @@ class QSOFitNew:
         Returns (center_value, lower_bound, upper_bound) in model-axis units.
         """
         lam0 = float(lambda_rest)
-        if self.wave_scale == 'log':
+        if self._active_wave_scale() == 'log':
             center = np.log(lam0)
-            if self.velocity_units == 'km/s':
+            if self._active_velocity_units() == 'km/s':
                 dv_c = float(voff_value) / self._c_kms
             else:
                 dv_c = float(voff_value)
@@ -198,7 +371,7 @@ class QSOFitNew:
         else:
             center = lam0
             # For bounds, keep exact multiplicative mapping: lam * exp(± dv/c)
-            if self.velocity_units == 'km/s':
+            if self._active_velocity_units() == 'km/s':
                 dv_c = float(voff_value) / self._c_kms
             else:
                 dv_c = float(voff_value)
@@ -210,7 +383,7 @@ class QSOFitNew:
         """Convert model-axis sigma + center to km/s."""
         sigma_axis = np.asarray(sigma_axis, dtype=float)
         center_axis = np.asarray(center_axis, dtype=float)
-        if self.wave_scale == 'log':
+        if self._active_wave_scale() == 'log':
             return (np.exp(sigma_axis) - 1.0) * self._c_kms
         denom = np.clip(center_axis, 1e-20, np.inf)
         return (sigma_axis / denom) * self._c_kms
@@ -254,7 +427,7 @@ class QSOFitNew:
                 base = int(self.ind_tie_vindex1[0])
                 for xx in range(len(self.ind_tie_vindex1) - 1):
                     idx = int(self.ind_tie_vindex1[xx + 1])
-                    if self.wave_scale == 'log':
+                    if self._active_wave_scale() == 'log':
                         pp[idx] = pp[base] + self.delta_lambda1[xx]
                     else:
                         pp[idx] = pp[base] * np.exp(self.delta_lambda1[xx])
@@ -262,7 +435,7 @@ class QSOFitNew:
                 base = int(self.ind_tie_vindex2[0])
                 for xx in range(len(self.ind_tie_vindex2) - 1):
                     idx = int(self.ind_tie_vindex2[xx + 1])
-                    if self.wave_scale == 'log':
+                    if self._active_wave_scale() == 'log':
                         pp[idx] = pp[base] + self.delta_lambda2[xx]
                     else:
                         pp[idx] = pp[base] * np.exp(self.delta_lambda2[xx])
@@ -558,12 +731,12 @@ class QSOFitNew:
                            {'limits': (0., 1)}, {'limits': (1000, 9000)}, {'limits': (0., bs_upper)}, 
                            None, None, None, {'limits': (-5., 3.)}]
 
-        # choose fitter by migration flag
-        if getattr(migration_config, 'use_lmfit_continuum', False):
+        # choose optimizer backend
+        if migration_config.use_lmfit:
             conti_fit = self._fit_continuum_lmfit(wave[tmp_all], flux[tmp_all], err[tmp_all], pp0, tmp_parinfo)
         else:
             if _kmpfit is None:
-                raise ImportError("kapteyn is required for kmpfit path. Install with: pip install 'cython<3.0' && pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz or enable lmfit via migration_config.use_lmfit_continuum=True")
+                raise ImportError("kapteyn is required for kmpfit path. Install with: pip install 'cython<3.0' && pip install https://www.astro.rug.nl/software/kapteyn/kapteyn-3.4.tar.gz or set migration_config.use_lmfit=True")
             conti_fit = _kmpfit.Fitter(residuals=self._residuals, data=(wave[tmp_all], flux[tmp_all], err[tmp_all]))
             conti_fit.parinfo = tmp_parinfo
             conti_fit.fit(params0=pp0)
@@ -584,7 +757,7 @@ class QSOFitNew:
                 tmp_conti = self._broken_pl_flux(
                     wave[tmp_all], conti_fit.params[7], conti_fit.params[14], conti_fit.params[6])
             ind_noBAL = ~np.where(((flux[tmp_all] < tmp_conti-3.*err[tmp_all]) & (wave[tmp_all] < 3500.)), True, False)
-            if getattr(migration_config, 'use_lmfit_continuum', False):
+            if migration_config.use_lmfit:
                 conti_fit = self._fit_continuum_lmfit(
                     wave[tmp_all][ind_noBAL], self.Smooth(flux[tmp_all][ind_noBAL], 10), err[tmp_all][ind_noBAL],
                     pp0, tmp_parinfo)
@@ -613,7 +786,7 @@ class QSOFitNew:
         # get conti result -----------------------------
         if self.MC == True and self.n_trails > 0:
             # Uncertainty estimation
-            if getattr(migration_config, 'use_lmfit_continuum', False):
+            if migration_config.use_lmfit:
                 # With MC=True, run lmfit-based MC to estimate errors
                 conti_para_std, all_L_std = self._conti_mc_lmfit(self.wave[tmp_all], self.flux[tmp_all],
                                                                  self.err[tmp_all], pp0, tmp_parinfo,
@@ -655,7 +828,7 @@ class QSOFitNew:
                                                          'PL_slope2_err'), axis=None)                                         
         else:
             # Always provide parameter errors when MC is disabled; skip heavy propagation
-            if getattr(migration_config, 'use_lmfit_continuum', False):
+            if migration_config.use_lmfit:
                 try:
                     n_params = len(conti_fit.params)
                     param_stderr = []
@@ -1068,7 +1241,7 @@ class QSOFitNew:
         y_scaled = y * amp
         return y_scaled
 
-    # ---------------- lmfit migration stubs -----------------
+    # ---------------- lmfit backend helpers -----------------
     def _fit_continuum_lmfit(self, wave, flux, err, pp0, param_bounds):
         """
         lmfit-based continuum fitting using existing residuals and parameter order.
@@ -1287,8 +1460,10 @@ class QSOFitNew:
             Fe_flux_range=None, poly=False, BC=False, rej_abs=False, initial_guess=None, MC=True, n_trails=1,
             linefit=True, tie_lambda=True, tie_width=True, tie_flux_1=True, tie_flux_2=True, save_result=True,
             plot_fig=True, save_fig=True, plot_line_name=True, plot_legend=True, dustmap_path=None, 
-            save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None):
+            save_fig_path=None, save_fits_path=None, save_fits_name=None, mask_compname=None,
+            line_list_path=None, wave_scale='auto', velocity_units='auto'):
         self.mask_compname = mask_compname
+        migration_config.refresh_axis_from_env()
 
         # deprecate Fe_uv_op in favor of include_iron
         if include_iron is None:
@@ -1368,6 +1543,9 @@ class QSOFitNew:
             save_fig_path = self._default_output_dir()
         if save_fits_name == None:
             save_fits_name = f'res_qsofitmore_{self.name}.fits'        
+
+        if linefit == True:
+            self._prepare_line_table_config(line_list_path, wave_scale, velocity_units)
         
         # deal with pixels with error equal 0 or inifity
         ind_gooderror = np.where((self.err != 0) & ~np.isinf(self.err), True, False)
@@ -1712,8 +1890,7 @@ class QSOFitNew:
         linelist_path = self._linelist_path()
         if not os.path.exists(linelist_path):
             raise FileNotFoundError(self._linelist_missing_message(linelist_path))
-        linepara = fits.open(linelist_path)
-        linelist = linepara[1].data
+        linelist = self._read_line_table(linelist_path)
         mask_compname = self.mask_compname
         if mask_compname is not None:
             linelist = linelist[linelist['compname']!=mask_compname]
@@ -1765,12 +1942,12 @@ class QSOFitNew:
                 comp_name = linelist['compname'][ind_line][0]
                 # print('Number of good pixels in line complex {}: {}.'.format(comp_name, num_good_pix))
                 if np.sum(ind_n) > 10:
-                    # call kmpfit or lmfit for lines (controlled by migration flag)
-                    if getattr(migration_config, 'use_lmfit_lines', False):
+                    # call kmpfit or lmfit for lines
+                    if migration_config.use_lmfit:
                         line_fit = self._do_line_lmfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                     else:
                         if _kmpfit is None:
-                            raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
+                            raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or set migration_config.use_lmfit=True")
                         line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                     if comp_name == 'Hb':
                         na_dict = self.na_line_nomc(line_fit, linecompname, ind_line, nline_fit, ngauss_fit)
@@ -1791,21 +1968,21 @@ class QSOFitNew:
                             linelist_fit = linelist[ind_line]
                             ngauss_fit = np.asarray(linelist_fit['ngauss'], dtype=int)
                             self._do_tie_line(linelist, ind_line)
-                            if getattr(migration_config, 'use_lmfit_lines', False):
+                            if migration_config.use_lmfit:
                                 line_fit = self._do_line_lmfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                             else:
                                 if _kmpfit is None:
-                                    raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
+                                    raise ImportError("kapteyn is required for kmpfit path. Install kapteyn or set migration_config.use_lmfit=True")
                                 line_fit = self._do_line_kmpfit(linelist, line_flux, ind_line, ind_n, nline_fit, ngauss_fit)
                    
-                    use_lmfit_lines = getattr(migration_config, 'use_lmfit_lines', False)
+                    use_lmfit = migration_config.use_lmfit
                     # calculate uncertainties (always save errors)
                     if self.MC == True and self.n_trails > 0:
                         all_para_std, fwhm_std, sigma_std, ew_std, peak_std, area_std, na_dict = self.new_line_mc(
                             self._x_axis(wave[ind_n]), line_flux[ind_n], err[ind_n], self.line_fit_ini, self.line_fit_par,
                             self.n_trails, compcenter, linecompname, ind_line, nline_fit, linelist_fit, ngauss_fit)
                         self.na_all_dict.update(na_dict)
-                    elif use_lmfit_lines:
+                    elif use_lmfit:
                         # lmfit: always use stderr/covariance propagation
                         try:
                             n_params = len(line_fit.params)
@@ -1846,25 +2023,7 @@ class QSOFitNew:
                             Cfull = np.diag(all_para_std ** 2)
 
                         def metrics_from_p(pvec):
-                            pp = pvec.copy()
-                            if self.tie_lambda:
-                                if len(self.ind_tie_vindex1) > 1:
-                                    for xx in range(len(self.ind_tie_vindex1) - 1):
-                                        pp[int(self.ind_tie_vindex1[xx + 1])] = pp[int(self.ind_tie_vindex1[0])] + self.delta_lambda1[xx]
-                                if len(self.ind_tie_vindex2) > 1:
-                                    for xx in range(len(self.ind_tie_vindex2) - 1):
-                                        pp[int(self.ind_tie_vindex2[xx + 1])] = pp[int(self.ind_tie_vindex2[0])] + self.delta_lambda2[xx]
-                            if self.tie_width:
-                                if len(self.ind_tie_windex1) > 1:
-                                    for xx in range(len(self.ind_tie_windex1) - 1):
-                                        pp[int(self.ind_tie_windex1[xx + 1])] = pp[int(self.ind_tie_windex1[0])]
-                                if len(self.ind_tie_windex2) > 1:
-                                    for xx in range(len(self.ind_tie_windex2) - 1):
-                                        pp[int(self.ind_tie_windex2[xx + 1])] = pp[int(self.ind_tie_windex2[0])]
-                            if len(self.ind_tie_findex1) > 0 and self.tie_flux_1:
-                                pp[int(self.ind_tie_findex1[1])] = pp[int(self.ind_tie_findex1[0])] * self.fvalue_factor_1
-                            if len(self.ind_tie_findex2) > 0 and self.tie_flux_2:
-                                pp[int(self.ind_tie_findex2[1])] = pp[int(self.ind_tie_findex2[0])] * self.fvalue_factor_2
+                            pp = self._apply_ties_inplace(pvec.copy())
                             m = self.line_prop(compcenter, pp, 'broad')
                             return np.array(m, dtype=float)
 
@@ -2088,7 +2247,7 @@ class QSOFitNew:
         linelist = self.linelist
         linenames = linelist[linelist['compname'] == linecompname]['linename']
         self.linenames_mc = linenames
-        use_lmfit = getattr(migration_config, 'use_lmfit_lines', False)
+        use_lmfit = migration_config.use_lmfit
         if use_lmfit:
             try:
                 from lmfit import minimize, Parameters
@@ -2119,7 +2278,7 @@ class QSOFitNew:
         else:
             if kmpfit is None:
                 raise ImportError(
-                    "kapteyn is required for kmpfit MC path. Install kapteyn or enable lmfit via migration_config.use_lmfit_lines=True")
+                    "kapteyn is required for kmpfit MC path. Install kapteyn or set migration_config.use_lmfit=True")
 
         param_samples = []
         fwhm_samples, sigma_samples, ew_samples = [], [], []
@@ -2371,7 +2530,7 @@ class QSOFitNew:
             # print cen,sig,area
             left = min(cen-3*sig)
             right = max(cen+3*sig)
-            if self.wave_scale == 'log':
+            if self._active_wave_scale() == 'log':
                 disp = 1.e-4*np.log(10.)
                 npix = max(int((right - left) / disp), 50)
             else:
@@ -2451,7 +2610,7 @@ class QSOFitNew:
             # print cen,sig,area
             left = min(cen-3*sig)
             right = max(cen+3*sig)
-            if self.wave_scale == 'log':
+            if self._active_wave_scale() == 'log':
                 disp = 1.e-4*np.log(10.)
                 npix = max(int((right - left) / disp), 50)
             else:
@@ -2524,6 +2683,7 @@ class QSOFitNew:
     
     def Manygauss(self, xval, pp):
         """The multi-Gaussian model used to fit the emission lines, it will call the onegauss function"""
+        pp = np.asarray(pp, dtype=float)
         ngauss = int(pp.shape[0]/3)
         if ngauss != 0:
             yval = 0.
