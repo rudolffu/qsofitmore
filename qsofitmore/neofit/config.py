@@ -338,7 +338,7 @@ class HbetaComplexConfig:
 
 @dataclass(frozen=True)
 class MgIIComplexConfig:
-    """Configuration for the broad Mg II complex."""
+    """Configuration for broad and narrow Mg II emission."""
 
     window: Window = (2700.0, 2900.0)
     broad_fwhm_bands_kms: Tuple[Tuple[float, float], ...] = (
@@ -346,6 +346,8 @@ class MgIIComplexConfig:
         (3500.0, 15000.0),
     )
     broad_velocity_bounds_kms: Tuple[float, float] = (-2000.0, 2000.0)
+    narrow_fwhm_bounds_kms: Tuple[float, float] = (70.0, 1200.0)
+    narrow_velocity_bounds_kms: Tuple[float, float] = (-1000.0, 1000.0)
     min_coverage_fraction: float = 0.8
     min_valid_pixels: int = 30
     edge_margin_kms: float = 1000.0
@@ -356,6 +358,10 @@ class MgIIComplexConfig:
     def __post_init__(self) -> None:
         if len(self.broad_fwhm_bands_kms) != 2:
             raise ValueError("MgIIComplexConfig requires two broad FWHM bands.")
+        if self.narrow_fwhm_bounds_kms[0] <= 0:
+            raise ValueError("Mg II narrow FWHM bounds must be positive.")
+        if self.narrow_fwhm_bounds_kms[1] <= self.narrow_fwhm_bounds_kms[0]:
+            raise ValueError("Mg II narrow FWHM bounds must be increasing.")
         _validate_complex_optimizer_config(self)
 
 

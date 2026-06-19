@@ -179,13 +179,13 @@ titles and summaries.
 - generic and H-beta-compatible JSON summaries;
 - continuum and per-complex measurement CSV files;
 - generic and compatible full-grid CSV files;
-- `diagnostic_global_continuum.png`;
-- `diagnostic_global_host_context.png` when host decomposition is available;
-- the Balmer-edge and specialized H-beta diagnostic plots.
+- `main_qa_<normalized_object_name>.png` by default;
+- optional PDF or combined PNG/PDF QA output;
+- opt-in host-context, Balmer-edge, and specialized H-beta diagnostics.
 
 ### Global QA figure
 
-`diagnostic_global_continuum.png` currently uses:
+The main object-named QA figure currently uses:
 
 - a fixed `10.5 x 6.2` inch canvas;
 - a full-spectrum overview plus up to four equally divided zoom panels;
@@ -222,10 +222,14 @@ qa_config = neofit.GlobalQAPlotConfig(
     object_name=None,
     object_label=None,
     show_coordinates=True,
+    output_format="png",  # png, pdf, or both
+    write_other_diagnostics=False,
 )
 ```
 
 `object_name` and `object_label` can replace the catalog identifier and prefix.
+The filename uses a normalized lowercase object name with punctuation and
+spaces replaced by underscores.
 If host context is requested but unavailable, the overview falls back to the
 host-subtracted presentation.
 
@@ -301,7 +305,6 @@ real-data QA inspection. Their plots are regenerated after visual changes.
   parameters.
 - Sparse Jacobian support for local fitting is API-compatible but is not a true
   block-sparse global implementation.
-- There is no batch scheduler or parallel DESI catalog runner in `neofit`.
 - Legacy line-table/FITS output compatibility is incomplete.
 - Specialized C IV blue-wing/outflow selection and YAML recipe loading remain
   deferred.
@@ -352,12 +355,33 @@ real-data QA inspection. Their plots are regenerated after visual changes.
 - Decide whether future complexes need cross-complex kinematic ties or should
   remain independent.
 
-### 5. Prepare batch-safe operation
+### 5. Harden the new run-bundle workflow
 
-- Define a stable tabular input/output contract for catalog-scale runs.
-- Add resumable per-object failure reporting and deterministic random seeds.
-- Reuse loaded templates and configured model contexts across objects.
-- Evaluate object-level parallelism independently of optimizer changes.
+The first batch-safe implementation is now available:
+
+- `fit_object_to_store(...)` and `fit_batch(...)` write the same Parquet run
+  bundle;
+- Arrow scans DESI/SPARCL-like Parquet inputs in projected, bounded batches;
+- SDSS, LAMOST, and IRAF FITS readers share one input registry;
+- spawned process workers are the batch default, with one numerical-library
+  thread per worker and a serial fallback on platforms without process
+  semaphores;
+- deterministic object seeds, resumable object/config pairs, isolated failure
+  records, checksummed staging shards, and deterministic multi-job partitions
+  are implemented;
+- scalar tables compact automatically, while model shards remain canonical
+  unless model compaction is requested;
+- archived models can regenerate QA figures without refitting.
+
+Next:
+
+- validate the readers against a broader set of real survey files and unusual
+  FITS layouts;
+- profile Parquet microbatch size, worker count, and model-shard size on a
+  representative catalog;
+- add cluster-facing command-line wrappers after the Python API settles;
+- define science-catalog specifications and derived-quantity calibrations
+  separately, without freezing the authoritative long-form measurement schema.
 
 ### 6. Defer major backend changes
 

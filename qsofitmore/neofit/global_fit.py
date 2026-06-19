@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
+from functools import lru_cache
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
@@ -52,6 +53,24 @@ NII_6549_WAVE = 6549.85
 NII_6585_WAVE = 6585.28
 SII_6718_WAVE = 6718.29
 SII_6733_WAVE = 6732.67
+
+
+@lru_cache(maxsize=None)
+def _cached_iron_template(template, template_path, normalization):
+    return load_iron_template(
+        template,
+        template_path=template_path,
+        normalization=normalization,
+    )
+
+
+@lru_cache(maxsize=None)
+def _cached_balmer_template(log10_ne, n_min, provenance):
+    return load_balmer_template(
+        log10_ne=log10_ne,
+        n_min=n_min,
+        provenance=provenance,
+    )
 
 
 def balmer_continuum_basis(
@@ -176,10 +195,10 @@ class _ContinuumContext:
         for label, iron_cfg in (("uv_iron", cfg.uv_iron), ("optical_iron", cfg.optical_iron)):
             if iron_cfg is None or not iron_cfg.enabled:
                 continue
-            template = load_iron_template(
+            template = _cached_iron_template(
                 iron_cfg.template,
-                template_path=iron_cfg.template_path,
-                normalization=iron_cfg.normalization,
+                iron_cfg.template_path,
+                iron_cfg.normalization,
             )
             coverage = template.coverage or (float(template.wave_rest.min()), float(template.wave_rest.max()))
             if self._overlap_count(coverage) < cfg.min_component_pixels:
@@ -214,8 +233,8 @@ class _ContinuumContext:
         bs = cfg.balmer_series
         bs_pixels = self.base_fit_mask & (self.wave >= 3500.0) & (self.wave <= 4260.0)
         if bs.enabled and np.count_nonzero(bs_pixels) >= cfg.min_component_pixels:
-            self.balmer_template = load_balmer_template(
-                log10_ne=bs.log10_ne, n_min=bs.n_min, provenance=bs.provenance
+            self.balmer_template = _cached_balmer_template(
+                bs.log10_ne, bs.n_min, bs.provenance
             )
             self.warnings.extend(self.balmer_template.warnings)
             self._add("balmer_series.amp", bs.amplitude, bs.amplitude_bounds)
@@ -1102,6 +1121,19 @@ class _MgIIContext(_SeparableLineContext):
                 config.broad_velocity_bounds_kms[1],
             )
             self._add(f"{prefix}.fwhm_kms", 0.5 * (fwhm_lo + fwhm_hi), fwhm_lo, fwhm_hi)
+        self._add("MgII_narrow.flux", scale * 0.05, 0.0, np.inf)
+        self._add(
+            "MgII_narrow.velocity_kms",
+            0.0,
+            config.narrow_velocity_bounds_kms[0],
+            config.narrow_velocity_bounds_kms[1],
+        )
+        self._add(
+            "MgII_narrow.fwhm_kms",
+            350.0,
+            config.narrow_fwhm_bounds_kms[0],
+            config.narrow_fwhm_bounds_kms[1],
+        )
         self._finalize()
 
     def components(self, theta, wave):
@@ -1114,6 +1146,15 @@ class _MgIIContext(_SeparableLineContext):
                 self.shifted(MGII_WAVE, self.get(theta, f"{prefix}.velocity_kms")),
                 self.get(theta, f"{prefix}.fwhm_kms"),
             )
+        out["MgII_narrow"] = _gaussian_area_profile(
+            wave,
+            self.get(theta, "MgII_narrow.flux"),
+            self.shifted(
+                MGII_WAVE,
+                self.get(theta, "MgII_narrow.velocity_kms"),
+            ),
+            self.get(theta, "MgII_narrow.fwhm_kms"),
+        )
         return out
 
     def broad_profile(self, theta, wave):
@@ -1124,6 +1165,15 @@ class _MgIIContext(_SeparableLineContext):
         values = self._named_values(self.nonlinear_names, nonlinear)
         columns = []
         derivative_columns = [[] for _ in self.nonlinear_names] if need_derivatives else None
+
+        def append_column(basis, derivatives):
+            columns.append(basis)
+            if derivative_columns is not None:
+                for derivative_index, name in enumerate(self.nonlinear_names):
+                    derivative_columns[derivative_index].append(
+                        derivatives.get(name, np.zeros_like(wave))
+                    )
+
         for index in range(1, 3):
             prefix = f"MgII_broad{index}"
             velocity_name = f"{prefix}.velocity_kms"
@@ -1131,16 +1181,30 @@ class _MgIIContext(_SeparableLineContext):
             basis, velocity_derivative, width_derivative = _gaussian_unit_profile_with_derivatives(
                 wave, MGII_WAVE, values[velocity_name], values[width_name]
             )
-            columns.append(basis)
-            if derivative_columns is not None:
-                derivatives = {
+            append_column(
+                basis,
+                {
                     velocity_name: velocity_derivative,
                     width_name: width_derivative,
-                }
-                for derivative_index, name in enumerate(self.nonlinear_names):
-                    derivative_columns[derivative_index].append(
-                        derivatives.get(name, np.zeros_like(wave))
-                    )
+                },
+            )
+        narrow_velocity_name = "MgII_narrow.velocity_kms"
+        narrow_width_name = "MgII_narrow.fwhm_kms"
+        basis, velocity_derivative, width_derivative = (
+            _gaussian_unit_profile_with_derivatives(
+                wave,
+                MGII_WAVE,
+                values[narrow_velocity_name],
+                values[narrow_width_name],
+            )
+        )
+        append_column(
+            basis,
+            {
+                narrow_velocity_name: velocity_derivative,
+                narrow_width_name: width_derivative,
+            },
+        )
         design = np.column_stack(columns)
         if derivative_columns is None:
             return design, None
@@ -1504,6 +1568,14 @@ def _broad_complex_metrics(
             if flux_scale_to_cgs is not None
             else np.nan
         )
+    elif metric_prefix == "MgII":
+        narrow_flux = context.get(theta, "MgII_narrow.flux")
+        metrics["MgII_narrow_flux_input"] = narrow_flux
+        metrics["MgII_narrow_flux_cgs"] = (
+            narrow_flux * (1.0 + z) * flux_scale_to_cgs
+            if flux_scale_to_cgs is not None
+            else np.nan
+        )
     return metrics
 
 
@@ -1657,7 +1729,7 @@ def fit_mgii_complex(
     *,
     compute_covariance: bool = True,
 ) -> EmissionComplexResult:
-    """Fit the two-component broad Mg II profile when covered."""
+    """Fit two broad Mg II components plus one narrow component."""
 
     cfg = config or MgIIComplexConfig()
     return _fit_separable_emission_complex(
@@ -1666,7 +1738,7 @@ def fit_mgii_complex(
         config=cfg,
         context_class=_MgIIContext,
         complex_name="MgII",
-        selected_model="two_broad_gaussians",
+        selected_model="two_broad_plus_narrow_gaussians",
         reference_wave=MGII_WAVE,
         line_centers=(MGII_WAVE,),
         metric_prefix="MgII",

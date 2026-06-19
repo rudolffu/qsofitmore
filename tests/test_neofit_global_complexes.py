@@ -110,7 +110,7 @@ def test_mgii_recovers_two_broad_components_and_metrics():
     assert result.param_values["MgII_broad1.flux"] == pytest.approx(70.0, rel=1.0e-3)
     assert result.param_values["MgII_broad2.flux"] == pytest.approx(30.0, rel=1.0e-3)
     assert result.metrics["MgII_broad_flux_input"] == pytest.approx(100.0, rel=1.0e-3)
-    assert result.covariance.shape == (6, 6)
+    assert result.covariance.shape == (9, 9)
 
 
 def test_halpha_recovers_tied_narrow_lines_and_fixed_nii_ratio():
@@ -711,7 +711,11 @@ def test_host_context_companion_plot(tmp_path, monkeypatch):
     assert _has_host_context(result)
     assert "20.0\\%" in _host_fraction_annotation(result)
     assert "30.0\\%" in _host_fraction_annotation(result)
-    files = neofit.write_global_line_products(result, str(tmp_path))
+    files = neofit.write_global_line_products(
+        result,
+        str(tmp_path),
+        neofit.GlobalQAPlotConfig(write_other_diagnostics=True),
+    )
 
     assert files["host_context_plot"].endswith(
         "diagnostic_global_host_context.png"

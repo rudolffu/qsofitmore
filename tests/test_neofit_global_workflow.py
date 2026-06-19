@@ -177,7 +177,11 @@ def test_global_workflow_refines_balmer_width_and_writes_products(tmp_path):
         neofit.HbetaComplexConfig(fit_oiii_wings=False),
     )
 
-    files = neofit.write_global_hbeta_products(result, str(tmp_path))
+    files = neofit.write_global_hbeta_products(
+        result,
+        str(tmp_path),
+        neofit.GlobalQAPlotConfig(write_other_diagnostics=True),
+    )
 
     assert result.legacy_hbeta_success
     assert set(files) >= {

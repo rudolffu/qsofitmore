@@ -5,7 +5,9 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Dict, Mapping, Optional, Tuple
+import re
+from typing import Dict, Mapping, Optional, Tuple, Union
+import unicodedata
 
 import numpy as np
 import pandas as pd
@@ -23,10 +25,12 @@ class GlobalQAPlotConfig:
     max_zoom_panels: int = 4
     show_smoothed_data: bool = False
     smoothing_window_pixels: int = 7
-    show_host_context_in_overview: bool = False
+    show_host_context_in_overview: bool = True
     object_name: Optional[str] = None
     object_label: Optional[str] = None
     show_coordinates: bool = True
+    output_format: str = "png"
+    write_other_diagnostics: bool = False
 
     def __post_init__(self) -> None:
         if self.figure_width <= 0 or self.figure_height <= 0:
@@ -35,6 +39,67 @@ class GlobalQAPlotConfig:
             raise ValueError("max_zoom_panels must be at least one.")
         if self.smoothing_window_pixels < 1 or self.smoothing_window_pixels % 2 == 0:
             raise ValueError("smoothing_window_pixels must be a positive odd integer.")
+        if self.output_format not in ("png", "pdf", "both"):
+            raise ValueError("output_format must be 'png', 'pdf', or 'both'.")
+
+
+def _normalized_file_label(value: object) -> str:
+    text = unicodedata.normalize("NFKD", str(value)).encode(
+        "ascii", "ignore"
+    ).decode("ascii")
+    text = re.sub(r"[^a-zA-Z0-9]+", "_", text.strip().lower())
+    return text.strip("_") or "object"
+
+
+def _qa_object_name(
+    result: NeoFitWorkflowResult,
+    config: GlobalQAPlotConfig,
+) -> str:
+    value = config.object_name
+    if value in (None, ""):
+        value = (
+            result.metadata.get("object_name")
+            or result.metadata.get("object_id")
+            or result.metadata.get("targetid")
+            or result.spectrum.metadata.source
+            or "object"
+        )
+    return _normalized_file_label(value)
+
+
+def _plot_formats(config: GlobalQAPlotConfig) -> Tuple[str, ...]:
+    if config.output_format == "both":
+        return ("png", "pdf")
+    return (config.output_format,)
+
+
+def _plot_paths(
+    output_dir: Path,
+    stem: str,
+    config: GlobalQAPlotConfig,
+) -> Dict[str, Path]:
+    return {
+        file_format: output_dir / f"{stem}.{file_format}"
+        for file_format in _plot_formats(config)
+    }
+
+
+def _save_figure(fig, paths: Mapping[str, Path]) -> Dict[str, str]:
+    saved = {}
+    for file_format, path in paths.items():
+        save_kwargs = {"dpi": 160} if file_format == "png" else {}
+        fig.savefig(path, **save_kwargs)
+        saved[file_format] = str(path)
+    return saved
+
+
+def _coerce_plot_paths(
+    paths: Union[Path, Mapping[str, Path]],
+) -> Dict[str, Path]:
+    if isinstance(paths, Path):
+        file_format = paths.suffix.lower().lstrip(".") or "png"
+        return {file_format: paths}
+    return dict(paths)
 
 
 def _json_default(value):
@@ -61,8 +126,14 @@ def _percentile_limits(values, percentiles: Tuple[float, float] = (1.0, 99.0), p
     return float(lo - margin), float(hi + margin)
 
 
-def _plot_global(result: NeoFitWorkflowResult, path: Path, window: Optional[Tuple[float, float]] = None) -> str:
+def _plot_global(
+    result: NeoFitWorkflowResult,
+    paths: Union[Path, Mapping[str, Path]],
+    config: GlobalQAPlotConfig,
+    window: Optional[Tuple[float, float]] = None,
+) -> Dict[str, str]:
     import matplotlib.pyplot as plt
+    paths = _coerce_plot_paths(paths)
 
     spectrum = result.spectrum
     continuum = result.continuum
@@ -70,33 +141,66 @@ def _plot_global(result: NeoFitWorkflowResult, path: Path, window: Optional[Tupl
     valid = spectrum.valid_mask
     if window is not None:
         valid &= (wave >= window[0]) & (wave <= window[1])
-    fig, ax = plt.subplots(figsize=(10, 4.8), constrained_layout=True)
-    ax.plot(wave[valid], spectrum.flux[valid], color="0.35", lw=0.75, label="host-subtracted data")
-    ax.plot(wave[valid], continuum.model[valid], color="tab:blue", lw=1.4, label="global continuum")
-    colors = {
-        "power_law": "tab:orange",
-        "uv_iron": "tab:purple",
-        "optical_iron": "tab:red",
-        "balmer_continuum": "tab:green",
-        "balmer_series": "tab:brown",
-    }
+    fig, ax = plt.subplots(
+        figsize=(config.figure_width, 3.8),
+        constrained_layout=True,
+    )
+    ax.plot(
+        wave[valid],
+        spectrum.flux[valid],
+        color="0.45",
+        lw=0.65,
+        label="host-subtracted data",
+    )
+    ax.plot(
+        wave[valid],
+        continuum.model[valid],
+        color="black",
+        lw=1.8,
+        label="full continuum",
+    )
+    iron_label_used = False
+    balmer_label_used = False
     for name, component in continuum.component_models.items():
-        ax.plot(wave[valid], component[valid], lw=0.9, ls="--", color=colors.get(name), label=name)
+        color, linestyle = _CONTINUUM_STYLES.get(name, ("0.5", "-"))
+        if name in ("uv_iron", "optical_iron"):
+            label = "iron" if not iron_label_used else "_nolegend_"
+            iron_label_used = True
+        elif name in ("balmer_continuum", "balmer_series"):
+            label = (
+                "Balmer continuum &\nhigh-order series"
+                if not balmer_label_used
+                else "_nolegend_"
+            )
+            balmer_label_used = True
+        else:
+            label = name.replace("_", " ")
+        ax.plot(
+            wave[valid],
+            component[valid],
+            lw=0.75,
+            ls=linestyle,
+            color=color,
+            label=label,
+        )
     used = continuum.clip_mask & valid
     if np.any(used):
         ax.scatter(wave[used], spectrum.flux[used], s=5, color="k", alpha=0.25, label="fit pixels")
-    limits = _percentile_limits([spectrum.flux[valid], continuum.model[valid]])
-    if limits:
-        ax.set_ylim(*limits)
+    upper = _rounded_model_upper_limit(continuum.model[valid])
+    if upper is not None:
+        ax.set_ylim(0.0, upper)
     if window is not None:
         ax.set_xlim(*window)
-    ax.set_xlabel("Rest wavelength [Angstrom]", fontsize=10)
-    ax.set_ylabel(f"Flux density [{spectrum.flux_density_unit}]", fontsize=9)
-    ax.tick_params(labelsize=9)
-    ax.legend(fontsize=8, ncol=3)
-    fig.savefig(path, dpi=160)
+    ax.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=13)
+    ax.set_ylabel(
+        _flux_density_axis_label(spectrum.flux_density_unit),
+        fontsize=13,
+    )
+    _configure_qa_axis(ax)
+    ax.legend(fontsize=9, ncol=3, framealpha=0.72)
+    saved = _save_figure(fig, paths)
     plt.close(fig)
-    return str(path)
+    return saved
 
 
 _COMPLEX_WINDOWS = {
@@ -415,13 +519,14 @@ def _host_fraction_annotation(result: NeoFitWorkflowResult) -> str:
 
 def _plot_host_context(
     result: NeoFitWorkflowResult,
-    path: Path,
+    paths: Union[Path, Mapping[str, Path]],
     *,
-    figure_width: float = 10.5,
-) -> str:
+    config: GlobalQAPlotConfig,
+) -> Dict[str, str]:
     """Plot the original spectrum, host decomposition, and final AGN model."""
 
     import matplotlib.pyplot as plt
+    paths = _coerce_plot_paths(paths)
 
     if not _has_host_context(result):
         raise ValueError("A total spectrum and finite host model are required.")
@@ -444,7 +549,7 @@ def _plot_host_context(
     fig, axes = plt.subplots(
         2,
         1,
-        figsize=(figure_width, 5.2),
+        figsize=(config.figure_width, 5.2),
         sharex=True,
         constrained_layout=True,
         gridspec_kw={"height_ratios": (1.0, 1.0)},
@@ -468,8 +573,7 @@ def _plot_host_context(
     top_axis.plot(
         wave[valid_total],
         host[valid_total],
-        color="#2ca02c",
-        lw=1.25,
+        **_HOST_STYLE,
         label="host galaxy",
     )
     top_upper = _rounded_model_upper_limit(reconstructed_total[valid_total])
@@ -477,13 +581,13 @@ def _plot_host_context(
         top_axis.set_ylim(0.0, top_upper)
     top_axis.set_ylabel(
         _flux_density_axis_label(spectrum.flux_density_unit),
-        fontsize=9,
+        fontsize=13,
     )
-    source_title = _qa_overview_title(result)
+    source_title = _qa_overview_title(result, config)
     top_axis.set_title(
         "Host decomposition and final-model context"
         + (f" — {source_title}" if source_title else ""),
-        fontsize=11,
+        fontsize=12,
     )
     fraction_text = _host_fraction_annotation(result)
     if fraction_text:
@@ -494,7 +598,7 @@ def _plot_host_context(
             transform=top_axis.transAxes,
             ha="left",
             va="top",
-            fontsize=8,
+            fontsize=9,
             bbox={
                 "boxstyle": "round,pad=0.25",
                 "facecolor": "white",
@@ -503,7 +607,7 @@ def _plot_host_context(
             },
         )
     top_axis.legend(
-        fontsize=8,
+        fontsize=9,
         ncol=3,
         loc="best",
         framealpha=0.72,
@@ -529,11 +633,14 @@ def _plot_host_context(
         bottom_axis.set_ylim(0.0, bottom_upper)
     bottom_axis.set_ylabel(
         _flux_density_axis_label(spectrum.flux_density_unit),
-        fontsize=9,
+        fontsize=13,
     )
-    bottom_axis.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=9)
+    bottom_axis.set_xlabel(
+        r"Rest wavelength [$\mathrm{\AA}$]",
+        fontsize=13,
+    )
     bottom_axis.legend(
-        fontsize=8,
+        fontsize=9,
         ncol=2,
         loc="best",
         framealpha=0.72,
@@ -548,7 +655,7 @@ def _plot_host_context(
         _configure_qa_axis(axis)
 
     result.metadata["host_context_figure_size_inches"] = [
-        float(figure_width),
+        float(config.figure_width),
         5.2,
     ]
     result.metadata["host_context_ymin"] = 0.0
@@ -557,17 +664,18 @@ def _plot_host_context(
         "host_subtracted": bottom_upper,
     }
     result.metadata["host_context_fraction_annotation"] = fraction_text
-    fig.savefig(path, dpi=160)
+    saved = _save_figure(fig, paths)
     plt.close(fig)
-    return str(path)
+    return saved
 
 
 def _plot_qa(
     result: NeoFitWorkflowResult,
-    path: Path,
+    paths: Union[Path, Mapping[str, Path]],
     plot_config: Optional[GlobalQAPlotConfig] = None,
-) -> str:
+) -> Dict[str, str]:
     import matplotlib.pyplot as plt
+    paths = _coerce_plot_paths(paths)
 
     config = plot_config or GlobalQAPlotConfig()
     available, omitted = _select_zoom_complexes(
@@ -950,40 +1058,86 @@ def _plot_qa(
         fontsize=13,
     )
     result.metadata["qa_shared_axis_labels"] = True
-    fig.savefig(path, dpi=160)
+    saved = _save_figure(fig, paths)
     plt.close(fig)
-    return str(path)
+    return saved
 
 
-def _plot_hbeta(result: NeoFitWorkflowResult, path: Path) -> str:
+def _plot_hbeta(
+    result: NeoFitWorkflowResult,
+    paths: Union[Path, Mapping[str, Path]],
+    config: GlobalQAPlotConfig,
+) -> Dict[str, str]:
     import matplotlib.pyplot as plt
+    paths = _coerce_plot_paths(paths)
 
     fit = result.hbeta
     if fit is None:
         raise ValueError("Hβ diagnostic requested when Hβ was not fitted.")
     view = (fit.wave_rest >= 4600.0) & (fit.wave_rest <= 5120.0)
-    fig, ax = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
+    fig, ax = plt.subplots(
+        figsize=(config.figure_width, 3.8),
+        constrained_layout=True,
+    )
     ax.plot(
         fit.wave_rest[view],
         fit.flux_continuum_subtracted[view],
-        color="0.3",
-        lw=0.8,
+        color="0.45",
+        lw=0.65,
         label="continuum-subtracted data",
     )
-    ax.plot(fit.wave_rest[view], fit.model[view], color="tab:blue", lw=1.4, label=fit.selected_model)
+    ax.plot(
+        fit.wave_rest[view],
+        fit.model[view],
+        color="black",
+        lw=1.8,
+        label="full line model",
+    )
+    broad_label_used = False
+    narrow_label_used = False
+    wing_label_used = False
     for name, component in fit.component_models.items():
-        ax.plot(fit.wave_rest[view], component[view], lw=0.8, ls="--", label=name)
-    limits = _percentile_limits([fit.flux_continuum_subtracted[view], fit.model[view]])
-    if limits:
-        ax.set_ylim(*limits)
+        if "broad" in name and "wing" not in name:
+            style = _BROAD_COMPONENT_STYLE
+            label = "broad components" if not broad_label_used else "_nolegend_"
+            broad_label_used = True
+        elif "wing" in name:
+            style = _WING_STYLE
+            label = "outflow wing" if not wing_label_used else "_nolegend_"
+            wing_label_used = True
+        else:
+            style = _NARROW_STYLE
+            label = "narrow line" if not narrow_label_used else "_nolegend_"
+            narrow_label_used = True
+        ax.plot(
+            fit.wave_rest[view],
+            component[view],
+            label=label,
+            **style,
+        )
+    upper = _rounded_model_upper_limit(fit.model[view])
+    if upper is not None:
+        ax.set_ylim(0.0, upper)
     ax.set_xlim(4600.0, 5120.0)
-    ax.set_xlabel("Rest wavelength [Angstrom]", fontsize=10)
-    ax.set_ylabel(f"Flux density [{result.spectrum.flux_density_unit}]", fontsize=9)
-    ax.tick_params(labelsize=9)
-    ax.legend(fontsize=7, ncol=3)
-    fig.savefig(path, dpi=160)
+    ax.set_xlabel(r"Rest wavelength [$\mathrm{\AA}$]", fontsize=13)
+    ax.set_ylabel(
+        _flux_density_axis_label(result.spectrum.flux_density_unit),
+        fontsize=13,
+    )
+    ax.set_title(
+        "Hβ / [O III] diagnostic"
+        + (
+            f" — {_qa_overview_title(result, config)}"
+            if _qa_overview_title(result, config)
+            else ""
+        ),
+        fontsize=12,
+    )
+    _configure_qa_axis(ax)
+    ax.legend(fontsize=9, ncol=3, framealpha=0.72)
+    saved = _save_figure(fig, paths)
     plt.close(fig)
-    return str(path)
+    return saved
 
 
 def _measurement_row(fit) -> Dict[str, object]:
@@ -1058,6 +1212,13 @@ def write_global_line_products(
     out = Path(output_dir)
     out.mkdir(parents=True, exist_ok=True)
     files: Dict[str, str] = {}
+    plot_config = qa_plot_config or GlobalQAPlotConfig()
+    file_object_name = _qa_object_name(result, plot_config)
+    result.metadata["qa_file_object_name"] = file_object_name
+    result.metadata["qa_output_format"] = plot_config.output_format
+    result.metadata["write_other_diagnostics"] = bool(
+        plot_config.write_other_diagnostics
+    )
 
     summary_path = out / "neofit_global_lines_summary.json"
     compatibility_summary_path = out / "neofit_global_hbeta_summary.json"
@@ -1137,32 +1298,75 @@ def write_global_line_products(
     pd.DataFrame(grid).to_csv(compatibility_grid_path, index=False)
     files["compatibility_full_grid_csv"] = str(compatibility_grid_path)
 
-    files["global_plot"] = _plot_qa(
-        result,
-        out / "diagnostic_global_continuum.png",
-        qa_plot_config,
+    main_qa_paths = _plot_paths(
+        out,
+        f"main_qa_{file_object_name}",
+        plot_config,
     )
-    files["qa_plot"] = files["global_plot"]
-    if _has_host_context(result):
-        files["host_context_plot"] = _plot_host_context(
+    main_qa_files = _plot_qa(
+        result,
+        main_qa_paths,
+        plot_config,
+    )
+    for file_format, path in main_qa_files.items():
+        files[f"main_qa_{file_format}"] = path
+    primary_main_qa = main_qa_files.get(
+        "png",
+        next(iter(main_qa_files.values())),
+    )
+    files["main_qa"] = primary_main_qa
+    files["global_plot"] = primary_main_qa
+    files["qa_plot"] = primary_main_qa
+
+    if plot_config.write_other_diagnostics and _has_host_context(result):
+        host_context_files = _plot_host_context(
             result,
-            out / "diagnostic_global_host_context.png",
-            figure_width=(
-                qa_plot_config.figure_width
-                if qa_plot_config is not None
-                else GlobalQAPlotConfig().figure_width
+            _plot_paths(
+                out,
+                "diagnostic_global_host_context",
+                plot_config,
             ),
+            config=plot_config,
+        )
+        for file_format, path in host_context_files.items():
+            files[f"host_context_plot_{file_format}"] = path
+        files["host_context_plot"] = host_context_files.get(
+            "png",
+            next(iter(host_context_files.values())),
         )
         result.metadata["host_context_plot_created"] = True
     else:
         result.metadata["host_context_plot_created"] = False
-    files["balmer_edge_plot"] = _plot_global(
-        result, out / "diagnostic_balmer_edge.png", window=(3300.0, 4300.0)
-    )
-    if result.hbeta is not None:
-        files["hbeta_plot"] = _plot_hbeta(
-            result, out / "diagnostic_hbeta_oiii.png"
+
+    if plot_config.write_other_diagnostics:
+        balmer_edge_files = _plot_global(
+            result,
+            _plot_paths(out, "diagnostic_balmer_edge", plot_config),
+            plot_config,
+            window=(3300.0, 4300.0),
         )
+        for file_format, path in balmer_edge_files.items():
+            files[f"balmer_edge_plot_{file_format}"] = path
+        files["balmer_edge_plot"] = balmer_edge_files.get(
+            "png",
+            next(iter(balmer_edge_files.values())),
+        )
+        if result.hbeta is not None:
+            hbeta_files = _plot_hbeta(
+                result,
+                _plot_paths(
+                    out,
+                    "diagnostic_hbeta_oiii",
+                    plot_config,
+                ),
+                plot_config,
+            )
+            for file_format, path in hbeta_files.items():
+                files[f"hbeta_plot_{file_format}"] = path
+            files["hbeta_plot"] = hbeta_files.get(
+                "png",
+                next(iter(hbeta_files.values())),
+            )
     result.output_files.update(files)
     summary_payload = json.dumps(
         result.summary(), indent=2, sort_keys=True, default=_json_default

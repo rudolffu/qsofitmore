@@ -4,6 +4,7 @@ from . import lines, recipes
 from .lines import LineDefinition
 from .complex_recipes import ComponentRecipe, ComplexRecipe
 from .api import fit_line_complex, fit_local
+from .batch import BatchResult, fit_batch, fit_object_to_store
 from .config import (
     BalmerContinuumConfig,
     BalmerSeriesConfig,
@@ -46,8 +47,25 @@ from .host_workflow import (
     fit_with_optional_host_decomp,
 )
 from .metadata import SpectrumMetadata, resolve_spectrum_metadata
+from .qa_archive import render_qa
+from .readers import (
+    SpectrumInput,
+    detect_fits_reader,
+    discover_fits_inputs,
+    read_input_manifest,
+    read_spectrum,
+    scan_parquet_spectra,
+)
 from .plotting import plot_line_result, plot_local_result, save_local_window_plots
 from .result import FitResult, LocalFitResult
+from .run_store import (
+    RunStore,
+    build_science_catalog,
+    compute_derived_quantities,
+    finalize_run,
+    load_model,
+    open_run,
+)
 from .spectrum import Spectrum
 from .templates import (
     BalmerSeriesTemplate,
@@ -63,6 +81,7 @@ __all__ = [
     "BalmerContinuumConfig",
     "BalmerSeriesConfig",
     "BalmerSeriesTemplate",
+    "BatchResult",
     "ComponentRecipe",
     "ComplexRecipe",
     "FitResult",
@@ -86,10 +105,18 @@ __all__ = [
     "NeoFitHostWorkflowResult",
     "NeoFitWorkflowResult",
     "PowerLawConfig",
+    "RunStore",
     "Spectrum",
+    "SpectrumInput",
     "SpectrumMetadata",
     "UncertaintyConfig",
     "balmer_continuum_basis",
+    "build_science_catalog",
+    "compute_derived_quantities",
+    "detect_fits_reader",
+    "discover_fits_inputs",
+    "finalize_run",
+    "fit_batch",
     "fit_global_continuum",
     "fit_global_hbeta",
     "fit_global_hbeta_workflow",
@@ -100,17 +127,24 @@ __all__ = [
     "fit_mgii_complex",
     "fit_line_complex",
     "fit_local",
+    "fit_object_to_store",
     "fit_with_optional_host_decomp",
     "list_balmer_templates",
     "list_iron_templates",
     "lines",
     "load_balmer_template",
     "load_iron_template",
+    "load_model",
+    "open_run",
     "plot_line_result",
     "plot_local_result",
     "recipes",
+    "read_input_manifest",
+    "read_spectrum",
+    "render_qa",
     "resolve_spectrum_metadata",
     "save_local_window_plots",
+    "scan_parquet_spectra",
     "write_global_hbeta_products",
     "write_global_line_products",
 ]

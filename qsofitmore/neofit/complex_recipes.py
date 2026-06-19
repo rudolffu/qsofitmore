@@ -109,6 +109,12 @@ _RECIPES = (
                 fwhm_bands_kms=((900.0, 3500.0), (3500.0, 15000.0)),
                 kinematic_group="MgII_broad",
             ),
+            _component(
+                "MgII_narrow",
+                ("mgii_blend",),
+                "narrow",
+                kinematic_group="MgII_narrow",
+            ),
         ), required_line_ids=("mgii_blend",), qa_labels=("mgii_blend",),
         auto_enabled=True, priority=90, backend="mgii_adapter", exclusive_group="mgii",
     ),
