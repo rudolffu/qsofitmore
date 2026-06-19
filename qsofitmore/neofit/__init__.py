@@ -1,6 +1,8 @@
 """Array-based fitting core for future qsofitmore workflows."""
 
-from . import recipes
+from . import lines, recipes
+from .lines import LineDefinition
+from .complex_recipes import ComponentRecipe, ComplexRecipe
 from .api import fit_line_complex, fit_local
 from .config import (
     BalmerContinuumConfig,
@@ -61,6 +63,8 @@ __all__ = [
     "BalmerContinuumConfig",
     "BalmerSeriesConfig",
     "BalmerSeriesTemplate",
+    "ComponentRecipe",
+    "ComplexRecipe",
     "FitResult",
     "EmissionComplexResult",
     "GaussianComponent",
@@ -73,6 +77,7 @@ __all__ = [
     "IronTemplate",
     "IronTemplateConfig",
     "LineComplexConfig",
+    "LineDefinition",
     "LocalFitConfig",
     "LocalFitResult",
     "LorentzianComponent",
@@ -98,6 +103,7 @@ __all__ = [
     "fit_with_optional_host_decomp",
     "list_balmer_templates",
     "list_iron_templates",
+    "lines",
     "load_balmer_template",
     "load_iron_template",
     "plot_line_result",

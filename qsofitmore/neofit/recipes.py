@@ -1,10 +1,33 @@
-"""Small convenience recipes for neofit local broad-line fitting."""
+"""Public recipe facade plus local broad-line convenience recipes."""
 
 from __future__ import annotations
 
 from typing import Iterable, List, Optional
 
 from .config import GaussianComponent, IronTemplateConfig, LineComplexConfig, LocalFitConfig, LorentzianComponent
+from .complex_recipes import (
+    ComponentRecipe,
+    ComplexRecipe,
+    describe,
+    generic_narrow_lines,
+    get,
+    list_complexes,
+    resolve,
+)
+
+__all__ = [
+    "ComponentRecipe",
+    "ComplexRecipe",
+    "describe",
+    "generic_narrow_lines",
+    "get",
+    "list_complexes",
+    "local_broad_lines",
+    "local_halpha",
+    "local_hbeta",
+    "local_mgii",
+    "resolve",
+]
 
 
 def _iron_config(

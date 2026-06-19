@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 
 from .global_result import NeoFitWorkflowResult
+from . import complex_recipes, lines
 
 
 @dataclass(frozen=True)
@@ -99,10 +100,11 @@ def _plot_global(result: NeoFitWorkflowResult, path: Path, window: Optional[Tupl
 
 
 _COMPLEX_WINDOWS = {
-    "mgii": (2700.0, 2900.0),
-    "hbeta": (4600.0, 5120.0),
-    "halpha": (6400.0, 6800.0),
+    recipe.id: recipe.fit_window
+    for recipe in complex_recipes.list_complexes()
+    if recipe.fit_window[1] > recipe.fit_window[0] + 1.0
 }
+_COMPLEX_WINDOWS.update({"hbeta": (4600.0, 5120.0), "halpha": (6400.0, 6800.0)})
 _SPECIES_COLORS = {
     "MgII": "tab:blue",
     "Hb": "tab:cyan",
@@ -150,7 +152,18 @@ _ZOOM_EMISSION_LINES = {
         (6732.67, r"[S II] 6733"),
     ),
 }
-_ZOOM_PRIORITY = ("hbeta", "mgii", "halpha")
+for _recipe in complex_recipes.list_complexes():
+    if _recipe.qa_labels:
+        _ZOOM_EMISSION_LINES[_recipe.id] = tuple(
+            (
+                lines.get(line_id).vacuum_wavelength,
+                lines.get(line_id).label,
+            )
+            for line_id in _recipe.qa_labels
+        )
+_ZOOM_PRIORITY = (
+    "hbeta_oiii", "hbeta", "mgii", "halpha_nii_sii", "halpha"
+)
 _LINE_MARKER_STYLE = {
     "color": "0.35",
     "linestyle": ":",
@@ -174,8 +187,11 @@ def _line_groups(name: str, fit) -> Tuple[Tuple[str, np.ndarray, str, str], ...]
             (fit.component_models[key] for key in broad_names),
             np.zeros_like(fit.model),
         )
-        label = {"mgii": "Mg II broad", "hbeta": "Hβ broad", "halpha": "Hα broad"}[name]
-        species = {"mgii": "MgII", "hbeta": "Hb", "halpha": "Ha"}[name]
+        try:
+            label = f"{complex_recipes.get(name).label} broad"
+        except ValueError:
+            label = f"{name} broad"
+        species = _species_from_component(broad_names[0])
         groups.append((label, broad_sum, species, "broad"))
     for component_name, component in fit.component_models.items():
         if component_name in broad_names:
@@ -609,7 +625,6 @@ def _plot_qa(
         else spectrum.flux
     )
     overview_full_model = full_model + host_model
-    overview_continuum = result.continuum.model + host_model
     overview_valid = valid.copy()
     if host_overview:
         overview_valid &= (
@@ -849,11 +864,10 @@ def _plot_qa(
     for zoom_index, (axis, complex_name) in enumerate(zip(zoom_axes, available)):
         lo, hi = _COMPLEX_WINDOWS[complex_name]
         panel_mask = valid & (wave >= lo) & (wave <= hi)
-        title = {
-            "mgii": "Mg II",
-            "hbeta": "Hβ / [O III]",
-            "halpha": "Hα / [N II] / [S II]",
-        }[complex_name]
+        try:
+            title = complex_recipes.get(complex_name).label
+        except ValueError:
+            title = complex_name
         fit = result.line_complexes[complex_name]
         title = (
             f"{title}  |  "
@@ -909,7 +923,7 @@ def _plot_qa(
         result.metadata.setdefault("qa_zoom_line_labels", {})[complex_name] = list(
             _annotate_emission_lines(
                 axis,
-                _ZOOM_EMISSION_LINES[complex_name],
+                _ZOOM_EMISSION_LINES.get(complex_name, ()),
                 y_fraction=0.82,
             )
         )
@@ -945,6 +959,8 @@ def _plot_hbeta(result: NeoFitWorkflowResult, path: Path) -> str:
     import matplotlib.pyplot as plt
 
     fit = result.hbeta
+    if fit is None:
+        raise ValueError("Hβ diagnostic requested when Hβ was not fitted.")
     view = (fit.wave_rest >= 4600.0) & (fit.wave_rest <= 5120.0)
     fig, ax = plt.subplots(figsize=(9, 4.8), constrained_layout=True)
     ax.plot(
@@ -991,14 +1007,30 @@ def _write_complex_products(out: Path, name: str, fit, files: Dict[str, str]) ->
     filenames = {
         "mgii": ("mgii_measurements.csv", "mgii_model.csv"),
         "hbeta": ("hbeta_oiii_measurements.csv", "hbeta_oiii_model.csv"),
+        "hbeta_oiii": ("hbeta_oiii_measurements.csv", "hbeta_oiii_model.csv"),
         "halpha": ("halpha_nii_sii_measurements.csv", "halpha_nii_sii_model.csv"),
+        "halpha_nii_sii": ("halpha_nii_sii_measurements.csv", "halpha_nii_sii_model.csv"),
     }
-    measurement_name, model_name = filenames[name]
+    measurement_name, model_name = filenames.get(
+        name, (f"{name}_measurements.csv", f"{name}_model.csv")
+    )
     measurement_path = out / measurement_name
     pd.DataFrame([_measurement_row(fit)]).to_csv(measurement_path, index=False)
     files[f"{name}_measurements_csv"] = str(measurement_path)
+    legacy_name = {
+        "hbeta_oiii": "hbeta",
+        "halpha_nii_sii": "halpha",
+    }.get(name)
+    if legacy_name is not None:
+        files[f"{legacy_name}_measurements_csv"] = str(measurement_path)
 
-    lo, hi = _COMPLEX_WINDOWS[name]
+    if name in _COMPLEX_WINDOWS:
+        lo, hi = _COMPLEX_WINDOWS[name]
+    elif np.any(fit.fit_mask):
+        lo = float(np.nanmin(fit.wave_rest[fit.fit_mask]))
+        hi = float(np.nanmax(fit.wave_rest[fit.fit_mask]))
+    else:
+        lo, hi = float(fit.wave_rest.min()), float(fit.wave_rest.max())
     view = (fit.wave_rest >= lo) & (fit.wave_rest <= hi)
     model_grid = {
         "wave_rest": fit.wave_rest[view],
@@ -1012,6 +1044,8 @@ def _write_complex_products(out: Path, name: str, fit, files: Dict[str, str]) ->
     model_path = out / model_name
     pd.DataFrame(model_grid).to_csv(model_path, index=False)
     files[f"{name}_model_csv"] = str(model_path)
+    if legacy_name is not None:
+        files[f"{legacy_name}_model_csv"] = str(model_path)
 
 
 def write_global_line_products(
@@ -1049,6 +1083,14 @@ def write_global_line_products(
         "balmer_series_implied_hbeta_flux_input",
         "balmer_series_implied_hbeta_flux_cgs",
         "balmer_series_fwhm_kms",
+        "balmer_series_fwhm_source",
+        "balmer_series_fwhm_synced_to_hbeta",
+        "balmer_series_fwhm_warning_codes",
+        "balmer_series_fwhm_snr",
+        "hbeta_sync_requested",
+        "hbeta_sync_attempted",
+        "hbeta_sync_converged",
+        "hbeta_sync_iterations",
     ):
         if key in result.continuum.metadata:
             continuum_row[key] = result.continuum.metadata[key]
@@ -1117,7 +1159,10 @@ def write_global_line_products(
     files["balmer_edge_plot"] = _plot_global(
         result, out / "diagnostic_balmer_edge.png", window=(3300.0, 4300.0)
     )
-    files["hbeta_plot"] = _plot_hbeta(result, out / "diagnostic_hbeta_oiii.png")
+    if result.hbeta is not None:
+        files["hbeta_plot"] = _plot_hbeta(
+            result, out / "diagnostic_hbeta_oiii.png"
+        )
     result.output_files.update(files)
     summary_payload = json.dumps(
         result.summary(), indent=2, sort_keys=True, default=_json_default

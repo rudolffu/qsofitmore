@@ -112,12 +112,13 @@ class NeoFitWorkflowResult:
 
     spectrum: Spectrum
     continuum_initial: GlobalContinuumResult
-    hbeta_initial: HbetaComplexResult
     continuum: GlobalContinuumResult
-    hbeta: HbetaComplexResult
+    hbeta_initial: Optional[HbetaComplexResult] = None
+    hbeta: Optional[HbetaComplexResult] = None
     mgii: Optional[EmissionComplexResult] = None
     halpha: Optional[EmissionComplexResult] = None
     line_complexes: Dict[str, EmissionComplexResult] = field(default_factory=dict)
+    complex_statuses: Dict[str, str] = field(default_factory=dict)
     host_decomp_enabled: bool = False
     total_spectrum: Optional[Spectrum] = None
     host_fit: Optional[Any] = None
@@ -131,19 +132,27 @@ class NeoFitWorkflowResult:
 
     def __post_init__(self) -> None:
         if not self.line_complexes:
-            self.line_complexes = {"hbeta": self.hbeta}
+            self.line_complexes = {}
+            if self.hbeta is not None:
+                self.line_complexes["hbeta_oiii"] = self.hbeta
             if self.mgii is not None:
                 self.line_complexes["mgii"] = self.mgii
             if self.halpha is not None:
-                self.line_complexes["halpha"] = self.halpha
+                self.line_complexes["halpha_nii_sii"] = self.halpha
 
     @property
-    def success(self) -> bool:
-        return bool(self.continuum.success and self.hbeta.success)
+    def continuum_success(self) -> bool:
+        return bool(self.continuum.success)
 
     @property
-    def complete_success(self) -> bool:
-        return bool(self.success and all(result.success for result in self.line_complexes.values()))
+    def legacy_hbeta_success(self) -> bool:
+        """Deprecated Hβ-oriented success verdict."""
+
+        return bool(
+            self.continuum.success
+            and self.hbeta is not None
+            and self.hbeta.success
+        )
 
     def warning_codes(self) -> List[str]:
         codes = [warning.code for warning in self.warnings]
@@ -153,14 +162,14 @@ class NeoFitWorkflowResult:
         return codes
 
     def summary(self) -> Dict[str, Any]:
-        return {
-            "success": self.success,
-            "complete_success": self.complete_success,
+        payload = {
+            "continuum_success": self.continuum_success,
             "host_decomp_enabled": bool(self.host_decomp_enabled),
             "continuum": self.continuum.summary(),
-            "hbeta": self.hbeta.summary(),
+            "hbeta": self.hbeta.summary() if self.hbeta is not None else None,
             "mgii": self.mgii.summary() if self.mgii is not None else None,
             "halpha": self.halpha.summary() if self.halpha is not None else None,
+            "complex_statuses": dict(self.complex_statuses),
             "line_complexes": {
                 name: result.summary() for name, result in self.line_complexes.items()
             },
@@ -170,3 +179,6 @@ class NeoFitWorkflowResult:
             "metadata": dict(self.metadata),
             "output_files": dict(self.output_files),
         }
+        if self.metadata.get("compatibility_hbeta_mode", False):
+            payload["legacy_hbeta_success"] = self.legacy_hbeta_success
+        return payload

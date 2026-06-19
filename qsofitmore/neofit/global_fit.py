@@ -3,19 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
 from scipy.optimize import least_squares, lsq_linear
 
 from .config import (
-    BalmerSeriesConfig,
     GlobalContinuumConfig,
     HalphaComplexConfig,
     HbetaComplexConfig,
     MgIIComplexConfig,
     UncertaintyConfig,
 )
+from .complex_recipes import ComplexRecipe
+from . import complex_recipes
+from .generic_complex import fit_generic_complex, resolve_recipe_coverage
 from .global_result import (
     EmissionComplexResult,
     GlobalContinuumResult,
@@ -217,7 +219,7 @@ class _ContinuumContext:
             )
             self.warnings.extend(self.balmer_template.warnings)
             self._add("balmer_series.amp", bs.amplitude, bs.amplitude_bounds)
-            if bs.fixed_fwhm_kms is None:
+            if self._balmer_fixed_fwhm() is None:
                 self._add("balmer_series.fwhm_kms", bs.fwhm_kms, bs.fwhm_bounds)
         elif bs.enabled:
             self.warnings.append(
@@ -233,6 +235,14 @@ class _ContinuumContext:
         self.upper = np.asarray(self.upper, dtype=float)
         self.index = {name: i for i, name in enumerate(self.names)}
         self._initialize_linear_amplitudes()
+
+    def _balmer_fixed_fwhm(self) -> Optional[float]:
+        config = self.config.balmer_series
+        if config.fixed_fwhm_kms is not None:
+            return float(config.fixed_fwhm_kms)
+        if not config.fit_fwhm:
+            return float(config.fwhm_kms)
+        return None
 
     def _get(self, theta: np.ndarray, name: str, default: float = 0.0) -> float:
         return float(theta[self.index[name]]) if name in self.index else float(default)
@@ -260,7 +270,7 @@ class _ContinuumContext:
             columns.append(balmer_continuum_basis(wave, bc.temperature_k, bc.tau_edge, bc.edge, bc.min_wave))
             names.append("balmer_continuum.amp")
         if "balmer_series.amp" in self.index:
-            fwhm = self.config.balmer_series.fixed_fwhm_kms
+            fwhm = self._balmer_fixed_fwhm()
             if fwhm is None:
                 fwhm = self._get(self.initial, "balmer_series.fwhm_kms")
             columns.append(evaluate_balmer_series(self.balmer_template, wave, fwhm))
@@ -361,7 +371,7 @@ class _ContinuumContext:
                 )
             )
         if "balmer_series.amp" in self.index:
-            fwhm = self.config.balmer_series.fixed_fwhm_kms
+            fwhm = self._balmer_fixed_fwhm()
             if fwhm is None:
                 fwhm = nonlinear_values["balmer_series.fwhm_kms"]
             if need_derivatives and "balmer_series.fwhm_kms" in nonlinear_values:
@@ -421,7 +431,7 @@ class _ContinuumContext:
                 wave, bc.temperature_k, bc.tau_edge, bc.edge, bc.min_wave
             )
         if self.balmer_template is not None:
-            fwhm = self.config.balmer_series.fixed_fwhm_kms
+            fwhm = self._balmer_fixed_fwhm()
             if fwhm is None:
                 fwhm = self._get(theta, "balmer_series.fwhm_kms")
             components["balmer_series"] = self._get(theta, "balmer_series.amp") * evaluate_balmer_series(
@@ -664,7 +674,7 @@ def fit_global_continuum(
             "balmer_template_source": (
                 context.balmer_template.source_path if context.balmer_template is not None else None
             ),
-            "balmer_series_fwhm_fixed": cfg.balmer_series.fixed_fwhm_kms is not None,
+            "balmer_series_fwhm_fixed": context._balmer_fixed_fwhm() is not None,
             "optimizer_requested": cfg.optimizer_method,
             "optimizer_used": optimizer_used,
             "jacobian_method": (
@@ -680,7 +690,7 @@ def fit_global_continuum(
     )
     if "balmer_series.amp" in context.index:
         balmer_amp = float(result.x[context.index["balmer_series.amp"]])
-        balmer_fwhm = cfg.balmer_series.fixed_fwhm_kms
+        balmer_fwhm = context._balmer_fixed_fwhm()
         if balmer_fwhm is None:
             balmer_fwhm = float(result.x[context.index["balmer_series.fwhm_kms"]])
         scale = spectrum.flux_density_scale_to_cgs
@@ -1971,8 +1981,9 @@ def fit_global_lines(
     uncertainty_config: Optional[UncertaintyConfig] = None,
     *,
     host_model_on_grid: Optional[np.ndarray] = None,
+    complexes: Optional[Sequence[Union[str, ComplexRecipe]]] = None,
 ) -> NeoFitWorkflowResult:
-    """Run global continuum, H-beta refinement, and covered line complexes."""
+    """Fit the global continuum and adaptively selected emission recipes."""
 
     global_cfg = global_config or GlobalContinuumConfig()
     hbeta_cfg = hbeta_config or HbetaComplexConfig()
@@ -1982,128 +1993,334 @@ def fit_global_lines(
     continuum_initial = fit_global_continuum(
         spectrum, global_cfg, compute_covariance=uncertainty_cfg.covariance
     )
-    hbeta_initial = fit_hbeta_complex(
-        spectrum, continuum_initial, hbeta_cfg, compute_covariance=uncertainty_cfg.covariance
-    )
+    requested_recipes = _resolve_requested_recipes(complexes)
+    selected_recipes: List[ComplexRecipe] = []
+    complex_statuses: Dict[str, str] = {}
+    coverage_by_recipe = {}
+    for recipe in requested_recipes:
+        coverage = resolve_recipe_coverage(spectrum, recipe)
+        coverage_by_recipe[recipe.id] = coverage
+        if coverage.status == "not_covered":
+            complex_statuses[recipe.id] = "not_covered"
+            continue
+        selected_recipes.append(recipe)
+        complex_statuses[recipe.id] = coverage.status
+
     warnings: List[NeoFitWarning] = []
-    measured_width = hbeta_initial.metrics.get("Hb_broad_fwhm_kms", np.nan)
+    hbeta_recipe = next(
+        (recipe for recipe in selected_recipes if recipe.id == "hbeta_oiii"), None
+    )
+    hbeta_was_requested = any(
+        recipe.id == "hbeta_oiii" for recipe in requested_recipes
+    )
+    hbeta_initial = None
+    if hbeta_recipe is not None:
+        try:
+            hbeta_initial = fit_hbeta_complex(
+                spectrum,
+                continuum_initial,
+                hbeta_cfg,
+                compute_covariance=uncertainty_cfg.covariance,
+            )
+        except Exception as exc:
+            coverage = coverage_by_recipe[hbeta_recipe.id]
+            warning = NeoFitWarning(
+                code="optional_line_fit_failed",
+                message=f"Hβ fitting failed: {exc}",
+                context={"recipe": hbeta_recipe.id},
+            )
+            hbeta_initial = _failed_complex_result(
+                spectrum,
+                continuum_initial,
+                hbeta_recipe.id,
+                hbeta_recipe.fit_window,
+                warning,
+                {
+                    "coverage_fraction": coverage.coverage_fraction,
+                    "n_valid_pixels": coverage.n_valid_pixels,
+                    "status": coverage.status,
+                },
+            )
+        complex_statuses[hbeta_recipe.id] = (
+            "fit" if hbeta_initial.success else "failed"
+        )
+        hbeta_initial.metadata.update(
+            {
+                "recipe_id": hbeta_recipe.id,
+                "recipe_label": hbeta_recipe.label,
+                "recipe_backend": hbeta_recipe.backend,
+                "coverage_status": coverage_by_recipe[hbeta_recipe.id].status,
+            }
+        )
+
+    bs_config = global_cfg.balmer_series
+    balmer_available = continuum_initial.metadata.get("balmer_template") is not None
+    initial_width = continuum_initial.metadata.get("balmer_series_fwhm_kms", np.nan)
+    width_source = (
+        "disabled"
+        if not bs_config.enabled
+        else "fixed_config"
+        if bs_config.fixed_fwhm_kms is not None or not bs_config.fit_fwhm
+        else "free_global_fit"
+        if balmer_available and np.isfinite(initial_width)
+        else "failed_or_unconstrained"
+    )
+    warning_codes: List[str] = []
+    sync_policy = bs_config.sync_with_hbeta
+    width_is_free = bs_config.fit_fwhm and bs_config.fixed_fwhm_kms is None
+    sync_requested = (
+        sync_policy in ("auto", "require")
+        and balmer_available
+        and width_is_free
+        and hbeta_was_requested
+    )
+    hbeta_reliable, hbeta_snr, reliability_reason = _hbeta_sync_reliability(
+        hbeta_initial,
+        uncertainty_cfg,
+        bs_config.sync_min_fwhm_snr,
+    )
     refinement_iterations = 0
     width_difference = np.nan
     width_converged = False
-    if (
-        continuum_initial.metadata.get("balmer_template") is not None
-        and hbeta_initial.success
-        and np.isfinite(measured_width)
-        and measured_width > 0
-    ):
+    sync_attempted = False
+    continuum = continuum_initial
+    hbeta = hbeta_initial
+    continuum_width_snr = np.nan
+    if balmer_available and width_is_free:
+        width_index = list(continuum_initial.param_values).index(
+            "balmer_series.fwhm_kms"
+        )
+        active_mask = np.asarray(
+            getattr(
+                continuum_initial.optimizer_result,
+                "active_mask",
+                np.zeros(len(continuum_initial.param_values)),
+            ),
+            dtype=int,
+        )
+        free_width = continuum_initial.param_values.get(
+            "balmer_series.fwhm_kms", np.nan
+        )
+        free_width_error = continuum_initial.param_errors.get(
+            "balmer_series.fwhm_kms", np.nan
+        )
+        if np.isfinite(free_width_error) and free_width_error > 0:
+            continuum_width_snr = float(free_width / free_width_error)
+        if not np.isfinite(continuum_width_snr) or continuum_width_snr < 3.0:
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "balmer_series_fwhm_weakly_constrained",
+                "The freely fitted Balmer-series width is weakly constrained.",
+                {"fwhm_snr": continuum_width_snr},
+                severity="info",
+            )
+        if active_mask[width_index] != 0:
+            width_source = "failed_or_unconstrained"
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "balmer_series_fwhm_at_bound",
+                "The freely fitted Balmer-series width is active on an optimizer bound.",
+                {"bound_side": int(active_mask[width_index])},
+            )
+    if sync_requested and hbeta_reliable and hbeta_initial is not None:
+        sync_attempted = True
+        measured_width = hbeta_initial.metrics.get("Hb_broad_fwhm_kms", np.nan)
         continuum = continuum_initial
         hbeta = hbeta_initial
         series_width = float(measured_width)
         for iteration in range(max(int(global_cfg.balmer_width_sync_max_iterations), 1)):
-            refined_series = replace(global_cfg.balmer_series, fixed_fwhm_kms=series_width)
+            refined_series = replace(
+                global_cfg.balmer_series,
+                fit_fwhm=False,
+                fwhm_kms=series_width,
+                fixed_fwhm_kms=None,
+            )
             refined_config = replace(global_cfg, balmer_series=refined_series)
-            continuum = fit_global_continuum(
+            candidate_continuum = fit_global_continuum(
                 spectrum, refined_config, compute_covariance=uncertainty_cfg.covariance
             )
-            hbeta = fit_hbeta_complex(
-                spectrum, continuum, hbeta_cfg, compute_covariance=uncertainty_cfg.covariance
+            candidate_hbeta = fit_hbeta_complex(
+                spectrum,
+                candidate_continuum,
+                hbeta_cfg,
+                compute_covariance=uncertainty_cfg.covariance,
             )
             refinement_iterations = iteration + 1
-            fitted_width = hbeta.metrics.get("Hb_broad_fwhm_kms", np.nan)
-            if not hbeta.success or not np.isfinite(fitted_width) or fitted_width <= 0:
-                warnings.append(
-                    NeoFitWarning(
-                        code="balmer_width_refinement_failed",
-                        message="Broad H-beta became unavailable during Balmer-width synchronization.",
-                    )
+            fitted_width = candidate_hbeta.metrics.get("Hb_broad_fwhm_kms", np.nan)
+            if (
+                not candidate_continuum.success
+                or not candidate_hbeta.success
+                or not np.isfinite(fitted_width)
+                or fitted_width <= 0
+            ):
+                _append_workflow_warning(
+                    warnings,
+                    warning_codes,
+                    "hbeta_sync_failed",
+                    "Hβ synchronization failed; the initial free-width solution was restored.",
                 )
                 break
             width_difference = float(fitted_width - series_width)
             if abs(width_difference) <= float(global_cfg.balmer_width_sync_tolerance_kms):
+                continuum = candidate_continuum
+                hbeta = candidate_hbeta
                 width_converged = True
+                width_source = "synced_to_hbeta"
                 break
             series_width = float(fitted_width)
-        if not width_converged and np.isfinite(width_difference):
-            warnings.append(
-                NeoFitWarning(
-                    code="balmer_width_not_converged",
-                    message="Balmer-series and summed broad-H-beta FWHM did not converge within the iteration limit.",
-                    context={
+        if not width_converged:
+            continuum = continuum_initial
+            hbeta = hbeta_initial
+            width_source = (
+                "fixed_config"
+                if bs_config.fixed_fwhm_kms is not None or not bs_config.fit_fwhm
+                else "free_global_fit"
+            )
+            if "hbeta_sync_failed" not in warning_codes:
+                _append_workflow_warning(
+                    warnings,
+                    warning_codes,
+                    "hbeta_sync_not_converged",
+                    "Balmer-series and Hβ widths did not converge; the initial solution was restored.",
+                    {
                         "difference_kms": width_difference,
                         "tolerance_kms": global_cfg.balmer_width_sync_tolerance_kms,
                         "iterations": refinement_iterations,
                     },
                 )
-            )
     else:
-        continuum = continuum_initial
-        hbeta = hbeta_initial
-        if continuum_initial.metadata.get("balmer_template") is not None:
-            warnings.append(
-                NeoFitWarning(
-                    code="balmer_width_refinement_skipped",
-                    message="The continuum refinement was skipped because broad H-beta FWHM was unavailable.",
-                )
+        if bs_config.enabled and not balmer_available:
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "balmer_series_region_not_covered",
+                "The high-order Balmer-series region is not sufficiently covered.",
             )
-    mgii, mgii_warnings = _optional_complex_for_workflow(
-        fit_mgii_complex,
-        spectrum,
-        continuum,
-        mgii_cfg,
-        uncertainty_cfg,
-        "mgii",
-    )
-    halpha, halpha_warnings = _optional_complex_for_workflow(
-        fit_halpha_complex,
-        spectrum,
-        continuum,
-        halpha_cfg,
-        uncertainty_cfg,
-        "halpha",
-    )
-    warnings.extend(mgii_warnings)
-    warnings.extend(halpha_warnings)
+        elif (
+            sync_policy in ("auto", "require")
+            and hbeta_was_requested
+            and hbeta_recipe is None
+        ):
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "hbeta_sync_skipped_not_covered",
+                "Hβ synchronization was skipped because its recipe is not covered.",
+                severity="info",
+            )
+            if bs_config.fit_fwhm and bs_config.fixed_fwhm_kms is None:
+                _append_workflow_warning(
+                    warnings,
+                    warning_codes,
+                    "balmer_series_fwhm_free_no_hbeta_anchor",
+                    "The Balmer-series width remains the freely fitted continuum value.",
+                    severity="info",
+                )
+        elif sync_policy in ("auto", "require") and not hbeta_reliable:
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "hbeta_sync_skipped_unreliable",
+                "Hβ synchronization was skipped because its width is unreliable.",
+                {"reason": reliability_reason, "fwhm_snr": hbeta_snr},
+            )
+        if sync_policy == "require" and not width_converged:
+            _append_workflow_warning(
+                warnings,
+                warning_codes,
+                "hbeta_sync_required_unmet",
+                "Required Hβ synchronization was unavailable; continuing with the free width.",
+            )
+
+    line_complexes: Dict[str, EmissionComplexResult] = {}
+    if hbeta is not None:
+        hbeta.metadata.update(
+            {
+                "recipe_id": "hbeta_oiii",
+                "recipe_label": complex_recipes.get("hbeta_oiii").label,
+                "recipe_backend": "hbeta_adapter",
+            }
+        )
+        line_complexes["hbeta_oiii"] = hbeta
+        complex_statuses["hbeta_oiii"] = "fit" if hbeta.success else "failed"
+    for recipe in selected_recipes:
+        if recipe.id == "hbeta_oiii":
+            continue
+        fit = _fit_selected_recipe(
+            recipe,
+            spectrum,
+            continuum,
+            uncertainty_cfg,
+            mgii_cfg,
+            halpha_cfg,
+        )
+        if fit is None:
+            complex_statuses[recipe.id] = "not_covered"
+            continue
+        line_complexes[recipe.id] = fit
+        complex_statuses[recipe.id] = "fit" if fit.success else "failed"
+        warnings.extend(
+            warning for warning in fit.warnings
+            if warning.code in ("optional_line_fit_failed", "recipe_backend_not_implemented")
+        )
+    mgii = line_complexes.get("mgii")
+    halpha = line_complexes.get("halpha_nii_sii")
+
     samples = {}
     for wavelength in (3000.0, 5100.0):
         samples.update(_continuum_sample(spectrum, continuum, wavelength, host_model_on_grid))
+    final_width = continuum.metadata.get("balmer_series_fwhm_kms", np.nan)
     metadata = {
         "refinement_performed": continuum is not continuum_initial,
-        "balmer_width_sync_converged": bool(width_converged),
-        "balmer_width_sync_iterations": int(refinement_iterations),
-        "balmer_width_sync_difference_kms": float(width_difference),
+        "balmer_series_fwhm_kms": float(final_width),
+        "balmer_series_fwhm_source": width_source,
+        "balmer_series_fwhm_synced_to_hbeta": bool(width_converged),
+        "balmer_series_fwhm_warning_codes": tuple(warning_codes),
+        "balmer_series_fwhm_snr": float(hbeta_snr),
+        "balmer_series_free_fwhm_snr": float(continuum_width_snr),
+        "hbeta_sync_requested": bool(sync_requested),
+        "hbeta_sync_attempted": bool(sync_attempted),
+        "hbeta_sync_converged": bool(width_converged),
+        "hbeta_sync_iterations": int(refinement_iterations),
+        "hbeta_sync_difference_kms": float(width_difference),
         "balmer_width_sync_tolerance_kms": float(global_cfg.balmer_width_sync_tolerance_kms),
         "continuum_samples": samples,
         "continuum_sample_flux_density_unit": spectrum.flux_density_unit,
         "uncertainty_mode": "covariance",
-        "line_complex_status": {
-            "mgii": (
-                "fit" if mgii is not None and mgii.success
-                else "failed" if mgii is not None
-                else "not_covered"
-            ),
-            "hbeta": "fit" if hbeta.success else "failed",
-            "halpha": (
-                "fit" if halpha is not None and halpha.success
-                else "failed" if halpha is not None
-                else "not_covered"
-            ),
-        },
+        "complex_statuses": dict(complex_statuses),
+        "line_complex_status": dict(complex_statuses),
+        "requested_complex_recipes": tuple(recipe.id for recipe in requested_recipes),
+        "selected_complex_recipes": tuple(recipe.id for recipe in selected_recipes),
     }
-    line_complexes = {"hbeta": hbeta}
-    if mgii is not None:
-        line_complexes["mgii"] = mgii
-    if halpha is not None:
-        line_complexes["halpha"] = halpha
+    continuum.metadata.update(
+        {
+            key: metadata[key]
+            for key in (
+                "balmer_series_fwhm_kms",
+                "balmer_series_fwhm_source",
+                "balmer_series_fwhm_synced_to_hbeta",
+                "balmer_series_fwhm_warning_codes",
+                "balmer_series_fwhm_snr",
+                "hbeta_sync_requested",
+                "hbeta_sync_attempted",
+                "hbeta_sync_converged",
+                "hbeta_sync_iterations",
+            )
+        }
+    )
     workflow = NeoFitWorkflowResult(
         spectrum=spectrum,
         total_spectrum=spectrum,
         continuum_initial=continuum_initial,
-        hbeta_initial=hbeta_initial,
         continuum=continuum,
+        hbeta_initial=hbeta_initial,
         hbeta=hbeta,
         mgii=mgii,
         halpha=halpha,
         line_complexes=line_complexes,
+        complex_statuses=complex_statuses,
         warnings=warnings,
         metadata=metadata,
     )
@@ -2116,9 +2333,156 @@ def fit_global_lines(
             halpha_cfg,
             int(uncertainty_cfg.monte_carlo_trials),
             uncertainty_cfg.random_seed,
+            requested_recipes,
         )
         workflow.metadata["uncertainty_mode"] = "covariance+monte_carlo"
     return workflow
+
+
+def _append_workflow_warning(
+    warnings: List[NeoFitWarning],
+    codes: List[str],
+    code: str,
+    message: str,
+    context: Optional[Dict[str, Any]] = None,
+    *,
+    severity: str = "warning",
+) -> None:
+    if code in codes:
+        return
+    codes.append(code)
+    warnings.append(
+        NeoFitWarning(code=code, message=message, severity=severity, context=context or {})
+    )
+
+
+def _resolve_requested_recipes(
+    requested: Optional[Sequence[Union[str, ComplexRecipe]]],
+) -> List[ComplexRecipe]:
+    candidates = (
+        [recipe for recipe in complex_recipes.list_complexes() if recipe.auto_enabled]
+        if requested is None
+        else [
+            complex_recipes.get(item) if isinstance(item, str) else item
+            for item in requested
+        ]
+    )
+    if any(not isinstance(recipe, ComplexRecipe) for recipe in candidates):
+        raise TypeError("complexes entries must be recipe IDs or ComplexRecipe objects.")
+    selected: List[ComplexRecipe] = []
+    groups: Dict[str, ComplexRecipe] = {}
+    for recipe in candidates:
+        group = recipe.exclusive_group
+        if group is None:
+            selected.append(recipe)
+            continue
+        previous = groups.get(group)
+        if previous is None:
+            groups[group] = recipe
+            selected.append(recipe)
+            continue
+        if requested is not None:
+            raise ValueError(
+                f"overlapping_complex_recipes: {previous.id!r} and {recipe.id!r}"
+            )
+        if recipe.priority > previous.priority:
+            selected.remove(previous)
+            groups[group] = recipe
+            selected.append(recipe)
+    return selected
+
+
+def _hbeta_sync_reliability(
+    fit: Optional[EmissionComplexResult],
+    uncertainty: UncertaintyConfig,
+    minimum_snr: Optional[float],
+) -> Tuple[bool, float, str]:
+    if fit is None:
+        return False, np.nan, "not_covered"
+    if not fit.success:
+        return False, np.nan, "fit_failed"
+    width = fit.metrics.get("Hb_broad_fwhm_kms", np.nan)
+    error = fit.metric_errors.get("Hb_broad_fwhm_kms", np.nan)
+    if not np.isfinite(width) or width <= 0:
+        return False, np.nan, "nonfinite_width"
+    if minimum_snr is not None:
+        if not uncertainty.covariance:
+            return False, np.nan, "covariance_disabled"
+        if not np.isfinite(error) or error <= 0:
+            return False, np.nan, "nonfinite_width_uncertainty"
+        snr = float(width / error)
+        if snr < minimum_snr:
+            return False, snr, "low_width_snr"
+    else:
+        snr = float(width / error) if np.isfinite(error) and error > 0 else np.nan
+    active = np.asarray(
+        getattr(fit.optimizer_result, "active_mask", np.zeros(len(fit.param_values))),
+        dtype=int,
+    )
+    names = list(fit.param_values)
+    if any(
+        active[index] != 0
+        for index, name in enumerate(names)
+        if name.startswith("Hb_broad") and name.endswith(".fwhm_kms")
+    ):
+        return False, snr, "broad_width_at_bound"
+    return True, snr, "reliable"
+
+
+def _fit_selected_recipe(
+    recipe: ComplexRecipe,
+    spectrum: Spectrum,
+    continuum: GlobalContinuumResult,
+    uncertainty: UncertaintyConfig,
+    mgii_config: MgIIComplexConfig,
+    halpha_config: HalphaComplexConfig,
+) -> Optional[EmissionComplexResult]:
+    try:
+        if recipe.backend == "mgii_adapter":
+            result = fit_mgii_complex(
+                spectrum, continuum, mgii_config, compute_covariance=uncertainty.covariance
+            )
+        elif recipe.backend == "halpha_adapter":
+            result = fit_halpha_complex(
+                spectrum, continuum, halpha_config, compute_covariance=uncertainty.covariance
+            )
+        elif recipe.backend == "generic":
+            result = fit_generic_complex(
+                spectrum, continuum, recipe, compute_covariance=uncertainty.covariance
+            )
+        else:
+            warning = NeoFitWarning(
+                code="recipe_backend_not_implemented",
+                message=f"The backend for {recipe.id} is not implemented.",
+                context={"recipe": recipe.id, "backend": recipe.backend},
+            )
+            return _failed_complex_result(
+                spectrum, continuum, recipe.id, recipe.fit_window, warning, {}
+            )
+    except Exception as exc:
+        coverage = resolve_recipe_coverage(spectrum, recipe)
+        warning = NeoFitWarning(
+            code="optional_line_fit_failed",
+            message=f"{recipe.id} fitting failed: {exc}",
+            context={"recipe": recipe.id},
+        )
+        return _failed_complex_result(
+            spectrum,
+            continuum,
+            recipe.id,
+            recipe.fit_window,
+            warning,
+            {
+                "coverage_fraction": coverage.coverage_fraction,
+                "n_valid_pixels": coverage.n_valid_pixels,
+                "status": coverage.status,
+            },
+        )
+    if result is not None:
+        result.metadata.setdefault("recipe_id", recipe.id)
+        result.metadata.setdefault("recipe_label", recipe.label)
+        result.metadata.setdefault("recipe_backend", recipe.backend)
+    return result
 
 
 def fit_global_hbeta(
@@ -2131,7 +2495,7 @@ def fit_global_hbeta(
 ) -> NeoFitWorkflowResult:
     """Compatibility wrapper for :func:`fit_global_lines`."""
 
-    return fit_global_lines(
+    result = fit_global_lines(
         spectrum,
         global_config,
         hbeta_config,
@@ -2139,7 +2503,10 @@ def fit_global_hbeta(
         None,
         uncertainty_config,
         host_model_on_grid=host_model_on_grid,
+        complexes=("hbeta_oiii",),
     )
+    result.metadata["compatibility_hbeta_mode"] = True
+    return result
 
 
 def _run_workflow_mc(
@@ -2150,10 +2517,12 @@ def _run_workflow_mc(
     halpha_config,
     n_trials,
     seed,
+    recipes,
 ):
     rng = np.random.default_rng(seed)
     samples: Dict[str, List[float]] = {}
-    successes = 0
+    continuum_successes = 0
+    complex_successes: Dict[str, int] = {recipe.id: 0 for recipe in recipes}
     for _ in range(n_trials):
         noisy = Spectrum.from_arrays(
             spectrum.wave_obs,
@@ -2171,14 +2540,18 @@ def _run_workflow_mc(
                 mgii_config,
                 halpha_config,
                 UncertaintyConfig(covariance=True, monte_carlo_trials=0),
+                complexes=recipes,
             )
-            if not result.success:
-                continue
-            successes += 1
             values = {}
-            values.update(result.continuum.param_values)
-            for complex_result in result.line_complexes.values():
-                values.update(complex_result.metrics)
+            if result.continuum_success:
+                continuum_successes += 1
+                values.update(result.continuum.param_values)
+            for recipe_key, complex_result in result.line_complexes.items():
+                recipe_id = complex_result.metadata.get("recipe_id", recipe_key)
+                if complex_result.success:
+                    if recipe_id in complex_successes:
+                        complex_successes[recipe_id] += 1
+                    values.update(complex_result.metrics)
             for name, value in values.items():
                 if np.isfinite(value):
                     samples.setdefault(name, []).append(float(value))
@@ -2189,4 +2562,9 @@ def _run_workflow_mc(
         if values:
             p16, p50, p84 = np.percentile(values, [16.0, 50.0, 84.0])
             percentiles[name] = {"p16": float(p16), "p50": float(p50), "p84": float(p84)}
-    return {"n_requested": int(n_trials), "n_success": int(successes), "percentiles": percentiles}
+    return {
+        "n_requested": int(n_trials),
+        "continuum_success_count": int(continuum_successes),
+        "complex_success_counts": complex_successes,
+        "percentiles": percentiles,
+    }

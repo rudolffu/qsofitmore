@@ -74,7 +74,8 @@ def test_global_fit_kind_runs_without_host(tmp_path):
         hbeta_config=neofit.HbetaComplexConfig(fit_oiii_wings=False),
     )
 
-    assert result.success
+    assert result.continuum_success
+    assert result.legacy_hbeta_success
     assert result.metadata["fit_kind"] == "global"
     assert result.metadata["targetid"] == "obj"
     assert result.metadata["ra"] is None

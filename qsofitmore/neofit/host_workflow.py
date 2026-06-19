@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import Any, Dict, Optional, Tuple
+from typing import Any, Dict, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -16,7 +16,8 @@ from .config import (
     MgIIComplexConfig,
     UncertaintyConfig,
 )
-from .global_fit import fit_global_hbeta, fit_global_lines
+from .global_fit import fit_global_lines
+from .complex_recipes import ComplexRecipe
 from .global_result import NeoFitWorkflowResult
 from .result import LocalFitResult
 from .spectrum import Spectrum
@@ -167,6 +168,7 @@ def fit_with_optional_host_decomp(
     mgii_config: Optional[MgIIComplexConfig] = None,
     halpha_config: Optional[HalphaComplexConfig] = None,
     uncertainty_config: Optional[UncertaintyConfig] = None,
+    complexes: Optional[Sequence[Union[str, ComplexRecipe]]] = None,
 ):
     """Read a spectrum, optionally subtract a pPXF host, then run neofit.
 
@@ -189,6 +191,7 @@ def fit_with_optional_host_decomp(
             mgii_config=mgii_config,
             halpha_config=halpha_config,
             uncertainty_config=uncertainty_config,
+            complexes=complexes,
         )
     if fit_kind != "local":
         raise ValueError("fit_kind must be 'local' or 'global'.")
@@ -247,7 +250,12 @@ def fit_with_optional_host_decomp(
     )
 
 
-def _summarize_mc_results(samples: Dict[str, list], n_requested: int, n_success: int) -> Dict[str, Any]:
+def _summarize_mc_results(
+    samples: Dict[str, list],
+    n_requested: int,
+    continuum_success_count: int,
+    complex_success_counts: Dict[str, int],
+) -> Dict[str, Any]:
     percentiles = {}
     for name, values in samples.items():
         finite = np.asarray(values, dtype=float)
@@ -255,7 +263,12 @@ def _summarize_mc_results(samples: Dict[str, list], n_requested: int, n_success:
         if finite.size:
             p16, p50, p84 = np.percentile(finite, [16.0, 50.0, 84.0])
             percentiles[name] = {"p16": float(p16), "p50": float(p50), "p84": float(p84)}
-    return {"n_requested": int(n_requested), "n_success": int(n_success), "percentiles": percentiles}
+    return {
+        "n_requested": int(n_requested),
+        "continuum_success_count": int(continuum_success_count),
+        "complex_success_counts": dict(complex_success_counts),
+        "percentiles": percentiles,
+    }
 
 
 def _run_host_refit_mc(
@@ -273,10 +286,12 @@ def _run_host_refit_mc(
     hbeta_config: Optional[HbetaComplexConfig],
     mgii_config: Optional[MgIIComplexConfig],
     halpha_config: Optional[HalphaComplexConfig],
+    complexes: Optional[Sequence[Union[str, ComplexRecipe]]] = None,
 ) -> Dict[str, Any]:
     rng = np.random.default_rng(seed)
     samples: Dict[str, list] = {}
-    successes = 0
+    continuum_successes = 0
+    complex_successes: Dict[str, int] = {}
     error = np.asarray(spectrum_data.uncertainty(), dtype=float)
     for _ in range(int(n_trials)):
         noisy_data = replace(
@@ -301,19 +316,24 @@ def _run_host_refit_mc(
                 halpha_config,
                 UncertaintyConfig(monte_carlo_trials=0),
                 host_model_on_grid=host_on_grid,
+                complexes=complexes,
             )
-            if not trial.success:
-                continue
-            successes += 1
-            values = dict(trial.continuum.param_values)
-            for complex_result in trial.line_complexes.values():
-                values.update(complex_result.metrics)
+            values = {}
+            if trial.continuum_success:
+                continuum_successes += 1
+                values.update(trial.continuum.param_values)
+            for recipe_id, complex_result in trial.line_complexes.items():
+                if complex_result.success:
+                    complex_successes[recipe_id] = complex_successes.get(recipe_id, 0) + 1
+                    values.update(complex_result.metrics)
             for name, value in values.items():
                 if np.isfinite(value):
                     samples.setdefault(name, []).append(float(value))
         except Exception:
             continue
-    return _summarize_mc_results(samples, n_trials, successes)
+    return _summarize_mc_results(
+        samples, n_trials, continuum_successes, complex_successes
+    )
 
 
 def fit_global_lines_workflow(
@@ -332,6 +352,7 @@ def fit_global_lines_workflow(
     mgii_config: Optional[MgIIComplexConfig] = None,
     halpha_config: Optional[HalphaComplexConfig] = None,
     uncertainty_config: Optional[UncertaintyConfig] = None,
+    complexes: Optional[Sequence[Union[str, ComplexRecipe]]] = None,
 ) -> NeoFitWorkflowResult:
     """Read one spectrum and run optional pPXF plus global multi-line neofit."""
 
@@ -376,6 +397,7 @@ def fit_global_lines_workflow(
         halpha_config,
         primary_uncertainty,
         host_model_on_grid=host_on_grid,
+        complexes=complexes,
     )
     workflow.host_decomp_enabled = bool(run_host_decomp)
     workflow.total_spectrum = total_spectrum
@@ -412,6 +434,7 @@ def fit_global_lines_workflow(
             hbeta_config=hbeta_config,
             mgii_config=mgii_config,
             halpha_config=halpha_config,
+            complexes=complexes,
         )
         workflow.metadata["uncertainty_mode"] = "covariance+monte_carlo_host_refit"
     return workflow
@@ -434,7 +457,7 @@ def fit_global_hbeta_workflow(
 ) -> NeoFitWorkflowResult:
     """Compatibility wrapper for :func:`fit_global_lines_workflow`."""
 
-    return fit_global_lines_workflow(
+    result = fit_global_lines_workflow(
         input_path,
         row_index=row_index,
         redshift=redshift,
@@ -447,4 +470,7 @@ def fit_global_hbeta_workflow(
         global_config=global_config,
         hbeta_config=hbeta_config,
         uncertainty_config=uncertainty_config,
+        complexes=("hbeta_oiii",),
     )
+    result.metadata["compatibility_hbeta_mode"] = True
+    return result

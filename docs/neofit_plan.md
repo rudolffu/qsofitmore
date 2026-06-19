@@ -49,11 +49,14 @@ The workflow currently provides:
 - constrained H-beta/[O III] fitting with three ordered broad components,
   shared narrow kinematics, fixed [O III] ratio, optional He II, and
   evidence-based [O III] wing selection;
-- Balmer-series/H-beta width synchronization with a default `5 km/s` tolerance
-  and five-iteration safety limit;
+- a freely fitted Balmer-series FWHM by default, with reliability-gated,
+  transactional H-beta synchronization as an optional refinement;
 - automatic Mg II fitting with two ordered broad components when covered;
 - automatic H-alpha/[N II]/[S II] fitting with three ordered broad components,
   shared narrow kinematics, fixed [N II] ratio, and independent [S II] fluxes;
+- immutable vacuum-wavelength and emission-complex registries;
+- adaptive recipe selection from rest-frame coverage, including executable
+  optical-blue and component-adaptive Paschen/NIR recipes;
 - covariance errors and optional Monte Carlo propagation, including optional
   pPXF host refitting;
 - continuum samples, host fractions, broad-profile moments, numerical FWHM,
@@ -61,10 +64,29 @@ The workflow currently provides:
 - generic global APIs plus compatibility wrappers retaining historical
   H-beta-oriented names.
 
-`NeoFitWorkflowResult.success` retains the continuum-plus-H-beta definition.
-`complete_success` additionally requires every attempted optional complex to
-succeed. Covered optional-complex failures remain visible in the result instead
-of invalidating the legacy success flag.
+H-beta is no longer mandatory. When its recipe is not covered, `hbeta` and
+`hbeta_initial` are `None` and no H-beta result is inserted into
+`line_complexes`. Generic workflow results expose `continuum_success`,
+`complex_statuses`, and per-complex success values; they do not synthesize an
+aggregate workflow verdict. H-beta compatibility wrappers expose the
+deprecated `legacy_hbeta_success` property.
+
+`complexes=None` selects covered, executable, auto-enabled recipes.
+`complexes=[]` performs a continuum-only fit. Explicit recipe IDs or immutable
+recipe objects can be supplied to select a custom set.
+
+### Registry and generic complex fitting
+
+`neofit.lines` provides canonical definitions, normalized aliases, vacuum
+wavelengths, transition types, blend membership, and provenance.
+`neofit.recipes` provides immutable `ComplexRecipe` and `ComponentRecipe`
+objects with discovery, description, and copy-based component overrides.
+
+The generic compiler supports Gaussian and Lorentzian integrated-flux
+components, shared velocity/FWHM groups, fixed ratios, independent positive
+fluxes, component-adaptive coverage, separate fit windows, and fixed-global or
+local continuum modes. Current Mg II, H-beta, and H-alpha implementations
+remain authoritative through dedicated recipe adapters.
 
 ### Optimizers and derivatives
 
@@ -229,6 +251,8 @@ The currently exported science-facing names include:
   `BalmerSeriesConfig`, `GlobalContinuumConfig`, `HbetaComplexConfig`,
   `MgIIComplexConfig`, `HalphaComplexConfig`, `UncertaintyConfig`,
   `GlobalContinuumResult`, `EmissionComplexResult`, `NeoFitWorkflowResult`;
+- registries: `neofit.lines`, `neofit.recipes`, `LineDefinition`,
+  `ComponentRecipe`, and `ComplexRecipe`;
 - fitting: `fit_line_complex`, `fit_local`, `fit_global_continuum`,
   `fit_hbeta_complex`, `fit_mgii_complex`, `fit_halpha_complex`,
   `fit_global_lines`, and workflow wrappers;
@@ -240,7 +264,7 @@ H-beta-named global functions and product writers remain compatibility wrappers.
 
 ## Validation Status
 
-The current non-benchmark suite passes with `130` tests. Coverage includes:
+The current non-benchmark suite passes with `140` tests. Coverage includes:
 
 - Gaussian, Lorentzian, continuum, iron, Balmer, velocity, and width derivative
   checks against centered finite differences;
@@ -256,16 +280,20 @@ The current non-benchmark suite passes with `130` tests. Coverage includes:
 - QA layout, fixed dimensions, annotations, colors, labels, legends, smoothing,
   host context, and one-to-four zoom-panel behavior;
 - legacy import compatibility.
+- line and recipe aliases, immutable overrides, adaptive selection,
+  continuum-only fitting, optional H-beta policies, partial NIR coverage,
+  fixed-ratio generic compilation, and generic Gaussian/Lorentzian
+  derivatives.
 
 Rows 0, 1, and 19 of the current DESI validation table are used for repeated
 real-data QA inspection. Their plots are regenerated after visual changes.
 
 ## Current Limitations
 
-- Only Mg II, H-beta/[O III], and H-alpha/[N II]/[S II] have dedicated global
-  emission-complex models.
-- Optional complexes are fitted independently after the final continuum/H-beta
-  synchronization; no cross-complex kinematic ties are imposed.
+- Only Mg II, H-beta/[O III], and H-alpha/[N II]/[S II] have dedicated adapter
+  models; other initial recipes use the generic compiler.
+- Complexes are fitted independently after any accepted H-beta synchronization;
+  no cross-complex kinematic ties are imposed.
 - The final continuum is fixed during Mg II and H-alpha fitting.
 - Covariance errors condition on the fitted continuum and host unless a Monte
   Carlo mode explicitly refits them.
@@ -275,6 +303,8 @@ real-data QA inspection. Their plots are regenerated after visual changes.
   block-sparse global implementation.
 - There is no batch scheduler or parallel DESI catalog runner in `neofit`.
 - Legacy line-table/FITS output compatibility is incomplete.
+- Specialized C IV blue-wing/outflow selection and YAML recipe loading remain
+  deferred.
 - `QSOFitNew` remains required for legacy-only models and workflows.
 
 ## Next Steps
@@ -308,10 +338,15 @@ real-data QA inspection. Their plots are regenerated after visual changes.
 - Decide whether further NumPy/SciPy optimization is warranted before adding
   JAX, Numba, or compiled extensions.
 
-### 4. Extend science coverage deliberately
+### 4. Validate and extend the recipe system deliberately
 
+- Validate the optical-blue and Paschen/NIR recipes on real spectra, especially
+  the He I 10833/Pa-gamma decomposition.
+- Add specialized C IV blue-wing/outflow model selection.
+- Consider YAML loading only after the Python recipe schema and warning
+  semantics are stable.
 - Add new global line complexes only with explicit coverage rules, derivative
-  tests, legacy/science parity tests, and QA labels.
+  tests, science parity tests, and QA labels.
 - Prioritize complexes based on the target survey/redshift distribution rather
   than attempting a full legacy line-table port at once.
 - Decide whether future complexes need cross-complex kinematic ties or should
@@ -338,9 +373,9 @@ Do not add JAX, Numba, Cython, or a true sparse global optimizer until:
 - Keep legacy `qsofitmore` imports working.
 - Keep `QSOFitNew` available until feature and science validation justify a
   migration.
-- Preserve existing public measurement names, covariance ordering, output
-  filenames, summary structure, and H-beta compatibility wrappers unless a
-  documented versioned migration is introduced.
+- Preserve existing dedicated measurement names, covariance ordering, output
+  filenames, and H-beta compatibility wrappers. Generic summaries intentionally
+  use per-recipe status instead of the removed aggregate success flags.
 - Treat changes to scientific defaults, parameter bounds, coverage rules,
   warning codes, or model-selection criteria as user-visible changes requiring
   dedicated regression tests.

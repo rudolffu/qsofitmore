@@ -260,19 +260,34 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
     full.host_decomp_enabled = True
     files = neofit.write_global_line_products(full, str(tmp_path))
 
-    assert set(full.line_complexes) == {"mgii", "hbeta", "halpha"}
-    assert set(partial.line_complexes) == {"mgii", "hbeta"}
+    assert set(full.line_complexes) == {
+        "mgii",
+        "hbeta_oiii",
+        "halpha_nii_sii",
+        "oii_nev_neiii_hgamma",
+    }
+    assert set(partial.line_complexes) == {
+        "mgii",
+        "hbeta_oiii",
+        "oii_nev_neiii_hgamma",
+    }
     assert partial.halpha is None
-    assert "line_complex_not_covered" in partial.warning_codes()
-    assert full.complete_success
+    assert partial.complex_statuses["halpha_nii_sii"] == "not_covered"
+    assert full.continuum_success
+    assert all(fit.success for fit in full.line_complexes.values())
     assert files["qa_plot"] == files["global_plot"]
     assert "host_context_plot" not in files
     assert full.metadata["host_context_plot_created"] is False
-    assert full.metadata["qa_panel_count"] == 4
+    assert full.metadata["qa_panel_count"] == 5
     assert full.metadata["qa_percentiles"] == [1.0, 99.8]
     assert full.metadata["qa_layout"] == "overview_top_complexes_bottom"
     assert full.metadata["qa_figure_size_inches"] == [10.5, 6.2]
-    assert full.metadata["qa_displayed_complexes"] == ["mgii", "hbeta", "halpha"]
+    assert full.metadata["qa_displayed_complexes"] == [
+        "mgii",
+        "oii_nev_neiii_hgamma",
+        "hbeta_oiii",
+        "halpha_nii_sii",
+    ]
     assert full.metadata["qa_omitted_complexes"] == []
     assert full.metadata["qa_smoothed_data"] is False
     assert full.metadata["qa_minor_ticks"] is True
@@ -298,16 +313,18 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
     )
     assert set(full.metadata["qa_zoom_model_upper_limits"]) == {
         "mgii",
-        "hbeta",
-        "halpha",
+        "oii_nev_neiii_hgamma",
+        "hbeta_oiii",
+        "halpha_nii_sii",
     }
     for complex_name, upper_limit in full.metadata[
         "qa_zoom_model_upper_limits"
     ].items():
         lo, hi = {
             "mgii": (2700.0, 2900.0),
-            "hbeta": (4600.0, 5120.0),
-            "halpha": (6400.0, 6800.0),
+            "oii_nev_neiii_hgamma": (3380.0, 4425.0),
+            "hbeta_oiii": (4640.0, 5100.0),
+            "halpha_nii_sii": (6400.0, 6800.0),
         }[complex_name]
         mask = (
             full.spectrum.valid_mask
@@ -320,20 +337,25 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
         )
         assert upper_limit >= np.max(complex_model[mask])
     assert set(full.metadata["qa_zoom_ymin"].values()) == {0.0}
-    for name in ("mgii", "hbeta", "halpha"):
+    for name in (
+        "mgii",
+        "oii_nev_neiii_hgamma",
+        "hbeta_oiii",
+        "halpha_nii_sii",
+    ):
         assert (
             f"{full.line_complexes[name].reduced_chi2:.2f}"
             in full.metadata["qa_zoom_titles"][name]
         )
     assert set(full.metadata["qa_zoom_line_labels"]["mgii"]) == {"Mg II"}
-    assert set(full.metadata["qa_zoom_line_labels"]["hbeta"]) == {
-        r"H$\beta$",
+    assert set(full.metadata["qa_zoom_line_labels"]["hbeta_oiii"]) == {
+        "Hβ",
         "[O III] 4960",
         "[O III] 5008",
     }
-    assert set(full.metadata["qa_zoom_line_labels"]["halpha"]) == {
+    assert set(full.metadata["qa_zoom_line_labels"]["halpha_nii_sii"]) == {
         "[N II] 6550",
-        r"H$\alpha$",
+        "Hα",
         "[N II] 6585",
         "[S II] 6718",
         "[S II] 6733",
@@ -346,7 +368,10 @@ def test_global_workflow_fits_only_covered_complexes_and_writes_qa(tmp_path):
         "[O III] 5008",
         r"H$\alpha$",
     }
-    assert {"mgii_measurements_csv", "halpha_measurements_csv"} <= set(files)
+    assert {
+        "mgii_measurements_csv",
+        "halpha_nii_sii_measurements_csv",
+    } <= set(files)
     assert files["summary_json"].endswith("neofit_global_lines_summary.json")
     assert files["compatibility_summary_json"].endswith(
         "neofit_global_hbeta_summary.json"
@@ -377,8 +402,8 @@ def test_optional_fit_failure_preserves_legacy_success(monkeypatch):
         _simple_global_config(),
         neofit.HbetaComplexConfig(fit_oiii_wings=False),
     )
-    assert result.success
-    assert not result.complete_success
+    assert result.continuum_success
+    assert result.legacy_hbeta_success
     assert result.halpha is not None
     assert not result.halpha.success
     assert "optional_line_fit_failed" in result.warning_codes()
@@ -394,7 +419,8 @@ def test_global_monte_carlo_includes_covered_optional_complexes():
         ),
     )
     percentiles = result.monte_carlo["percentiles"]
-    assert result.monte_carlo["n_success"] == 1
+    assert result.monte_carlo["continuum_success_count"] == 1
+    assert result.monte_carlo["complex_success_counts"]["hbeta_oiii"] == 1
     assert "MgII_broad_fwhm_kms" in percentiles
     assert "Hb_broad_fwhm_kms" in percentiles
     assert "Ha_broad_fwhm_kms" in percentiles
@@ -439,7 +465,8 @@ def test_host_refit_monte_carlo_includes_optional_complexes(monkeypatch):
         mgii_config=neofit.MgIIComplexConfig(),
         halpha_config=neofit.HalphaComplexConfig(),
     )
-    assert result["n_success"] == 1
+    assert result["continuum_success_count"] == 1
+    assert result["complex_success_counts"]["hbeta_oiii"] == 1
     assert "MgII_broad_fwhm_kms" in result["percentiles"]
     assert "Ha_broad_fwhm_kms" in result["percentiles"]
 

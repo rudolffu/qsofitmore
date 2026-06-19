@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+import warnings as _warnings
 from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
@@ -229,8 +230,11 @@ class BalmerSeriesConfig:
     provenance: str = "sh95"
     amplitude: float = 1.0
     amplitude_bounds: Bounds = (0.0, None)
-    fwhm_kms: float = 3000.0
-    fwhm_bounds: Bounds = (1000.0, 10000.0)
+    fit_fwhm: bool = True
+    fwhm_kms: float = 5000.0
+    fwhm_bounds: Bounds = (500.0, 15000.0)
+    sync_with_hbeta: str = "auto"
+    sync_min_fwhm_snr: Optional[float] = 3.0
     fixed_fwhm_kms: Optional[float] = None
 
     def __post_init__(self) -> None:
@@ -240,8 +244,26 @@ class BalmerSeriesConfig:
             raise ValueError("BalmerSeriesConfig.n_min must be 6 or 7.")
         if self.provenance not in ("sh95", "sh95_k13full_ext", "sh95_asymptotic_ext"):
             raise ValueError("Unsupported Balmer-series provenance.")
+        if not np.isfinite(self.fwhm_kms) or self.fwhm_kms <= 0:
+            raise ValueError("BalmerSeriesConfig.fwhm_kms must be positive and finite.")
+        fwhm_lo, fwhm_hi = self.fwhm_bounds
+        if fwhm_lo is None or fwhm_hi is None or fwhm_lo <= 0 or fwhm_hi <= fwhm_lo:
+            raise ValueError("BalmerSeriesConfig.fwhm_bounds must be finite, positive, and increasing.")
+        if self.sync_with_hbeta not in ("auto", "never", "require"):
+            raise ValueError(
+                "BalmerSeriesConfig.sync_with_hbeta must be 'auto', 'never', or 'require'."
+            )
+        if self.sync_min_fwhm_snr is not None and self.sync_min_fwhm_snr < 0:
+            raise ValueError("BalmerSeriesConfig.sync_min_fwhm_snr must be non-negative or None.")
         if self.fixed_fwhm_kms is not None and self.fixed_fwhm_kms <= 0:
             raise ValueError("fixed_fwhm_kms must be positive.")
+        if self.fixed_fwhm_kms is not None:
+            _warnings.warn(
+                "BalmerSeriesConfig.fixed_fwhm_kms is deprecated; use "
+                "fit_fwhm=False with fwhm_kms instead.",
+                DeprecationWarning,
+                stacklevel=2,
+            )
 
 
 @dataclass(frozen=True)

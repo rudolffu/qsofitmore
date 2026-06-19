@@ -179,7 +179,7 @@ def test_global_workflow_refines_balmer_width_and_writes_products(tmp_path):
 
     files = neofit.write_global_hbeta_products(result, str(tmp_path))
 
-    assert result.success
+    assert result.legacy_hbeta_success
     assert set(files) >= {
         "summary_json",
         "continuum_measurements_csv",
@@ -211,8 +211,8 @@ def test_balmer_series_width_converges_to_summed_broad_hbeta_fwhm():
         neofit.HbetaComplexConfig(fit_oiii_wings=False),
     )
 
-    assert result.success
-    assert result.metadata["balmer_width_sync_converged"]
+    assert result.legacy_hbeta_success
+    assert result.metadata["hbeta_sync_converged"]
     assert abs(
         result.continuum.metadata["balmer_series_fwhm_kms"]
         - result.hbeta.metrics["Hb_broad_fwhm_kms"]
@@ -240,5 +240,6 @@ def test_global_workflow_monte_carlo_reports_percentiles():
     )
 
     assert result.monte_carlo["n_requested"] == 2
-    assert result.monte_carlo["n_success"] == 2
+    assert result.monte_carlo["continuum_success_count"] == 2
+    assert result.monte_carlo["complex_success_counts"]["hbeta_oiii"] == 2
     assert "Hb_broad_fwhm_kms" in result.monte_carlo["percentiles"]
