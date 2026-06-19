@@ -144,16 +144,3 @@ test_outputs/
 
 # Agent instruction stub is redirected to dev_guide.md and should not be tracked
 AGENTS.md
-
-# Optional pPXF/qsofitmore host-decomposition local data and products
-data/templates/
-data/external/ppxf_data/
-data/external/ppxf_examples/
-ppxf_data/
-ppxf_examples/
-outputs/ppxf_qsofitmore/
-outputs/ppxf_qsofitmore_batch/
-local_spectra/
-euclid_spectra/
-*.fits
-*.fits.gz
