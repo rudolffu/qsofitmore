@@ -1887,7 +1887,11 @@ class QSOFitNew:
             overview_ax.set_xlim(wave.min(), wave.max())
 
             residual = np.full_like(wave, np.nan, dtype=float)
-            res_mask = tmp_all & (err > 0) & np.isfinite(flux) & np.isfinite(model_total)
+            fit_mask = tmp_all.copy()
+            if linefit and all_comp_range.size > 0:
+                for i in range(len(all_comp_range) // 2):
+                    fit_mask |= (wave >= all_comp_range[2*i]) & (wave <= all_comp_range[2*i+1])
+            res_mask = fit_mask & (err > 0) & np.isfinite(flux) & np.isfinite(model_total)
             residual[res_mask] = (flux[res_mask] - model_total[res_mask]) / err[res_mask]
             residual_ax.plot(wave, residual,
                            color='0.4', lw=0.8)
